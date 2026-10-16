@@ -7,6 +7,7 @@
 
 - GLM 开启通用图片嵌入输入能力，保留 `<|begin_of_image|>` 与 `<|image|>` 标记。
 - DeepSeek-V4 的视觉实验权重使用 `<｜deepseek_image｜>` 标记和相同的图片嵌入输入协议；仍须针对实际 Vision-Exp 权重验证，不能将文字版权重视为视觉模型。
+- DeepSeek 图片块按原生四 token 边界调整前导 pad；独立编码器的原始缓存保持不变。当前 Vision-Exp 使用原生 384 图像 token 上限，不能套用 Qwen 的 1024–4096 范围。
 - OpenAI Chat、Responses、Anthropic 与 token 计数路径区分 GLM/DeepSeek 的 high/max；配置中的默认档位也保留原值，避免经 Qwen 的 xhigh 映射改变语义。
 - 保留 `--read-buffer-mib`，默认仍为 512 MiB，可按主存条件调整；它改变长输入读取分段，不改模型权重或采样。
 - Windows 调试信息使用 `/Z7`，避免并行编译共写 PDB；不改变模型算法。

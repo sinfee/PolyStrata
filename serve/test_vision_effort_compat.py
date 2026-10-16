@@ -1,5 +1,8 @@
 """验证视觉标记和各 API 的思考档位，不需要 GPU。"""
 import unittest
+import struct
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 from serve.server import Service, ByteTokenizer
 
@@ -37,6 +40,34 @@ class VisionEffortCompatibility(unittest.TestCase):
     def test_qwen_mapping_unchanged(self):
         svc = self.service('qwen')
         self.assertEqual(svc.model_kwargs({'reasoning_effort': 'high'}, {'reasoning_effort': 'xhigh'}), {'reasoning_effort': 'xhigh'})
+
+    def test_deepseek_image_alignment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'image.bin'
+            rows = [(9.0, 9.0)] * 3 + [(float(i), float(i + 1)) for i in range(5)]
+            payload = b''.join(struct.pack('<2f', *row) for row in rows)
+            original = struct.pack('<5i', 0x31455653, 8, 8, 1, 2) + payload
+            path.write_bytes(original)
+            for position in range(8):
+                with self.subTest(position=position):
+                    aligned, count = Service.align_deepseek_image((path, 8), position)
+                    shift = position % 4
+                    data = aligned.read_bytes()
+                    self.assertEqual(count, 8 - shift)
+                    self.assertEqual(struct.unpack_from('<5i', data), (0x31455653, count, count, 1, 2))
+                    self.assertEqual(data[20:], payload[shift * 8:])
+                    self.assertEqual(path.read_bytes(), original)
+                    # 起始标记后的第一个视觉行必须位于四 token 边界。
+                    self.assertEqual((position + 3 - shift + 1) % 4, 0)
+
+    def test_deepseek_alignment_rejects_unknown_layout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'image.bin'
+            for data in (b'short', struct.pack('<5i', 0x31455653, 4, 2, 2, 1) + b'\0' * 16,
+                         struct.pack('<5i', 0x31455653, 4, 4, 1, 1) + struct.pack('<4f', 1, 2, 3, 4)):
+                path.write_bytes(data)
+                with self.assertRaises(ValueError):
+                    Service.align_deepseek_image((path, 4), 1)
 
 
 if __name__ == '__main__':

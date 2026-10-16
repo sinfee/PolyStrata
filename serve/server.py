@@ -4141,6 +4141,35 @@ class Service:
                   f"were left out (drop_oldest)", flush=True)
         return messages, ids
 
+    @staticmethod
+    def align_deepseek_image(encoded, position):
+        # 独立编码器从位置 0 编码，包含三个前导 pad；DeepSeek 原生规则为 3 - position % 4。
+        # 仅移除多余 pad，保留视觉行、换行和结束向量，不改变原始图片缓存。
+        path, count = encoded
+        shift = position % 4
+        if not shift:
+            return encoded
+        raw = Path(path).read_bytes()
+        if len(raw) < 20:
+            raise ValueError("invalid DeepSeek image record")
+        magic, rows, nx, ny, width = struct.unpack_from("<5i", raw)
+        stride = width * 4
+        if (magic != 0x31455653 or rows != count or rows <= 3 or nx != rows or ny != 1 or width <= 0
+                or len(raw) != 20 + rows * stride):
+            raise ValueError("unsupported DeepSeek image record layout")
+        if not raw[20:20 + stride] == raw[20 + stride:20 + 2 * stride] == raw[20 + 2 * stride:20 + 3 * stride]:
+            raise ValueError("DeepSeek image record has no three leading pad rows")
+        target = Path(path).with_name(Path(path).stem + f"-dsv4-align{shift}" + Path(path).suffix)
+        if not target.exists():
+            temporary = target.with_name(target.name + "." + uuid.uuid4().hex + ".tmp")
+            try:
+                temporary.write_bytes(struct.pack("<5i", magic, rows - shift, rows - shift, 1, width)
+                                      + raw[20 + shift * stride:])
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+        return target, count - shift
+
     def prepare(self, messages, tools, kwargs, max_new=None, force=None, req=None, cancel=None):
         """-> (ids, thinking, max_new). An unset or non-positive max_new (some clients send -1) means "unlimited":
         the rest of the context.  `force` (forced_call): without thinking the reply starts with it, so it ends the
@@ -4201,6 +4230,8 @@ class Service:
                     # more pairs than images: text parts that cut both markers apart (the literal marks keep whole ones text)
                     if k == len(encoded):
                         raise ValueError("the prompt and its images do not match")
+                    if self.call_format == "dsml" and getattr(self.tok, "pre", "") == "joyai-llm":
+                        encoded[k] = self.align_deepseek_image(encoded[k], len(out) + len(begin))
                     out += begin + [pad] * encoded[k][1] + end
                     k += 1
                 elif t == pad:
