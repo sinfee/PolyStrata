@@ -1,3 +1,5 @@
+> 本 fork 已验证 DeepSeek-V4-Flash-Vision-Exp UD-IQ3_XXS 与 BF16 mmproj 的图片输入；这不等于 0731 文字权重支持视觉。详见 [视觉兼容说明](FORK_VISION.md)。
+
 # DeepSeek V4 Flash (`strata-poly`)
 
 `strata-poly`, the engine that runs GLM 5.3 Flash, also runs DeepSeek V4 Flash: llama.cpp's architecture

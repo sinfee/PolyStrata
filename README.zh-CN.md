@@ -1,3 +1,5 @@
+> 本 fork 由 sinfee 维护，在新版上游基础上恢复 GLM 与 DeepSeek-V4 Vision-Exp 的图片输入，并保留思考档位和读取窗口兼容。文字版权重不因此获得视觉能力。改造及验证范围见 [视觉兼容说明](docs/FORK_VISION.md)。
+
 <h1 align="center">PolyStrata</h1>
 
 [English](README.md) · **简体中文** · [日本語](README.ja.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [Português](README.pt-BR.md)

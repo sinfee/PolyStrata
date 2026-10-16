@@ -1,3 +1,5 @@
+> 本 fork 已接通 GLM 的图片嵌入输入，搭配相应 BF16 mmproj 使用；下文未支持图片的说明属于上游基线。详见 [视觉兼容说明](FORK_VISION.md)。
+
 # GLM 5.3 Flash (`strata-poly`)
 
 PolyStrata adds a second engine, `strata-poly`, that runs GLM 5.3 Flash. It sits beside `strata`, which still runs

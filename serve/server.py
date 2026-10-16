@@ -3188,6 +3188,8 @@ class Service:
         # A template that writes the marker alone (MiniCPM-V 4.7's, like Gemma 4's) has no token before it to tell
         # an image's marker from the same text in a message: the first ones are the images (prepare()).
         self.image_marks = ("<|image|>", None, ("<|image>", "<image|>")) if self.call_format == "gemma" else \
+            ("<|image|>", "<|begin_of_image|>", None) if self.call_format == "glm" else \
+            ("<｜deepseek_image｜>", None, None) if self.call_format == "dsml" else \
             (IMAGE_PAD, VISION_START if VISION_START in getattr(self.template, "source", VISION_START) else None, None)
 
     def loaded(self) -> bool:
@@ -4005,6 +4007,26 @@ class Service:
                         "temp_c": hw.get("gpu_temp"), "power_w": hw.get("gpu_power")} if static.get("gpu_name") else None,
                 "ram": {"used_gib": scaled(hw.get("ram_used"), 2 ** 30, 1),
                         "total_gib": scaled(hw.get("ram_total"), 2 ** 30, 1)} if hw.get("ram_total") else None}}
+
+    def model_kwargs(self, req: dict, kwargs: dict) -> dict:
+        # GLM 与 DeepSeek 的 high/max 必须分别传入模板，不能经过 Qwen 的 xhigh 映射。
+        if self.call_format not in ("glm", "dsml") or kwargs.get("enable_thinking") is False:
+            return kwargs
+        ctk = req.get("chat_template_kwargs")
+        ctk = ctk if isinstance(ctk, dict) else {}
+        reasoning = req.get("reasoning")
+        reasoning = reasoning if isinstance(reasoning, dict) else {}
+        output = req.get("output_config")
+        output = output if isinstance(output, dict) else {}
+        given = ctk.get("reasoning_effort", req.get("reasoning_effort", reasoning.get("effort", output.get("effort"))))
+        if given is None:
+            given = self.config_effort
+        if given is None:
+            return kwargs
+        level = str(given).strip().lower()
+        if level in ("low", "high", "medium", "max", "maximum", "xhigh"):
+            return {**kwargs, "reasoning_effort": "high" if level == "medium" else "max" if level in ("max", "maximum", "xhigh") else level}
+        return kwargs
 
     def render_prompt(self, messages, tools, kwargs) -> str:
         """The template rendered.  #458: with `effort_end`, a request with a non-default effort (low, medium or no
@@ -6191,6 +6213,7 @@ def make_handler(svc: Service):
             req = svc.with_shared(req, "openai")
             bias_api.normalize(req.get("logit_bias"), len(getattr(svc.tok, "tokens", ())) or None)
             messages, tools, kw = openai_to_messages(req)
+            kw = svc.model_kwargs(req, kw)
             self._no_local_images(messages)
             if tool_choice_of(req.get("tool_choice"))[0] == "none":   # as the Responses route: no tools are offered
                 tools = None
@@ -6368,6 +6391,7 @@ def make_handler(svc: Service):
             messages = responses_api.input_messages(req)
             tools, names, skipped = responses_api.request_tools(req)
             kw = responses_api.template_kwargs(req, {"reasoning_effort": svc.effort_default()})
+            kw = svc.model_kwargs(req, kw)
             try:
                 self._no_local_images(messages)              # as on the chat route: no file read for a foreign page
             except ValueError as e:
@@ -6428,6 +6452,7 @@ def make_handler(svc: Service):
             read for the same request, rendered and tokenized - the model does not run."""
             req = svc.with_shared(req, "anthropic")
             messages, tools, kw = anthropic_to_messages(req, svc.anthropic_think_unasked)
+            kw = svc.model_kwargs(req, kw)
             stop_strings(req)                                 # the same 400 as the request itself would get
             check_request_sampling(req)                       # ... likewise a sampling field of the wrong type
             self._json(200, {"input_tokens": len(svc.encode_prompt(messages, tools, kw))})
@@ -6436,6 +6461,7 @@ def make_handler(svc: Service):
             svc.load()
             req = svc.with_shared(req, "anthropic")
             messages, tools, kw = anthropic_to_messages(req, svc.anthropic_think_unasked)
+            kw = svc.model_kwargs(req, kw)
             self._no_local_images(messages)
             if tool_choice_of(req.get("tool_choice"))[0] == "none":   # Anthropic's {"type": "none"}: no tools offered
                 tools = None
@@ -7183,7 +7209,9 @@ def main() -> int:
     svc.keep_awake = KeepAwake.create(cfg.get("prevent_sleep") is True)      # #1727: opt-in, Windows only
     if cfg.get("reasoning_effort") is not None:         # #1641: the thinking level of requests that name none
         try:
-            svc.config_effort = clean_shared_defaults({"reasoning_effort": cfg["reasoning_effort"]}).get("reasoning_effort")
+            # GLM 与 DeepSeek 的配置默认档位也保留原值，避免 high 在默认请求中变成 max。
+            svc.config_effort = (str(cfg["reasoning_effort"]).strip().lower() if svc.call_format in ("glm", "dsml") else
+                                 clean_shared_defaults({"reasoning_effort": cfg["reasoning_effort"]}).get("reasoning_effort"))
         except ValueError as e:
             raise SystemExit(f"[strata] config {e}")
         if svc.config_effort:
