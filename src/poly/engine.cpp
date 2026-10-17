@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
@@ -425,6 +426,25 @@ void* Engine::hmalloc(size_t bytes, const char* what) {
     return p;
 }
 
+// A write into VRAM and a run of zeros in it, both on st_.
+//
+// They used to be plain cudaMemcpy()/cudaMemset(), which run on the implicit (legacy) stream.  That stream is
+// NOT ordered against this engine's - every one of them is created with cudaStreamNonBlocking - so none of the
+// cudaStreamSynchronize(cs(st_)) that guard VRAM waits for those copies.  The load fills the expert cache with
+// them, and the first request whose prompt is longer than kKvGrow reaches cover() with rows to map: cover()
+// asks shrink_cache() for the VRAM, and shrink_cache() gives pieces back (vmm_unmap, "the card must be done
+// with them") while the load's last copies are still writing them.  The card then says
+// "rms_norm: an illegal memory access" at the first token of the prompt - for any prompt over kKvGrow tokens, on
+// any architecture (LFM2.5 and Qwen3.6 alike), and never for a shorter one, whose cover() has nothing to map
+// and so never gives VRAM back.  On st_ the same copies are behind the syncs that were already there.
+void Engine::h2d(void* dst, const void* src, size_t bytes) {
+    ck(cudaMemcpyAsync(dst, src, bytes, cudaMemcpyHostToDevice, cs(st_)), "a copy into VRAM");
+}
+
+void Engine::zero_vram(void* dst, size_t bytes) {
+    ck(cudaMemsetAsync(dst, 0, bytes, cs(st_)), "zeroing VRAM");
+}
+
 // A container whose memory is not much more than the model's files.  The file cache cannot hold them beside
 // the engine, so an answer reads experts from the disk: on a pod with 80 GiB and two RTX 3080s, GLM REAP50's
 // 79 GB file wrote at 6 tokens/s where 20.  And the pod ended the engine with SIGKILL in half of its long reads,
@@ -496,6 +516,7 @@ void Engine::vmm_map(Mapped& m, size_t bytes, size_t piece, const char* what) {
 
 // Gives back the pieces of m that lie past its first `bytes`.  The card must be done with them.
 void Engine::vmm_unmap(Mapped& m, size_t bytes) {
+    const size_t had = m.mapped;
     while (!m.pieces.empty() && m.mapped - m.pieces.back().second >= bytes) {
         const auto [h, n] = m.pieces.back();
         m.mapped -= n;
@@ -503,6 +524,56 @@ void Engine::vmm_unmap(Mapped& m, size_t bytes) {
         cu_ck(cuMemUnmap(m.base + m.mapped, n), "unmapping VRAM");
         cu_ck(cuMemRelease(h), "unmapping VRAM");
     }
+#ifdef STRATA_VMM_RELEASE_WITH_ADDRESSES
+    // On ROCm the released pieces stay the process's while their addresses are reserved (an RX 9070 XT: 320 MiB
+    // unmapped and released, 32 MiB more free; the addresses freed, all of it).  The kept pieces leave their
+    // addresses, which are freed and reserved again where they were, and come back with their bytes.  Once the first
+    // has left, the slots, the recorded launches and m point at VRAM that is not there: a step that fails from
+    // there on ends the engine (the server starts it again for the next request) rather than reading that VRAM.
+    if (m.mapped == had || !m.base) return;
+    const auto must = [](CUresult r, const char* what) {
+        if (r == CUDA_SUCCESS) return;
+        const char* s = nullptr;
+        (void) cuGetErrorString(r, &s);
+        std::fprintf(stderr, "strata-poly: %s while giving VRAM back: %s; the caches are no longer mapped, so the "
+                             "engine stops\n", what, s ? s : "unknown error");
+        std::abort();
+    };
+    for (size_t at = m.mapped, i = m.pieces.size(); i > 0; --i) {
+        at -= m.pieces[i - 1].second;
+        must(cuMemUnmap(m.base + at, m.pieces[i - 1].second), "unmapping the kept VRAM");
+    }
+    size_t free_b = 0, total_b = 0;
+    (void) cudaMemGetInfo(&free_b, &total_b);
+    const CUdeviceptr was = m.base;
+    must(cuMemAddressFree(m.base, m.reserved), "freeing the addresses");
+    CUdeviceptr p = 0;
+    must(cuMemAddressReserve(&p, m.reserved, 0, was, 0), "reserving the addresses again");
+    if (p != was) {   // the slots and the recorded launches point into the old addresses
+        std::fprintf(stderr, "strata-poly: the VRAM addresses could not be reserved again where they were, so the "
+                             "engine stops\n");
+        std::abort();
+    }
+    CUmemAccessDesc access = {};
+    access.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    access.location.id = device_;
+    access.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+    size_t at = 0;
+    for (const auto& [h, n] : m.pieces) {
+        must(cuMemMap(m.base + at, n, 0, h, 0), "mapping VRAM again");
+        must(cuMemSetAccess(m.base + at, n, &access, 1), "mapping VRAM again");
+        at += n;
+    }
+    // amdgpu counts the VRAM as free 2 to 5 ms later: a reading before that (mind_vram()'s log line, cover()) is
+    // short by what was given back.  At most 100 ms, as another program may take VRAM meanwhile.
+    const size_t back = (had - m.mapped) / 8 * 7, want = free_b + back;
+    for (int i = 0; i < 100 && free_b < want; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        (void) cudaMemGetInfo(&free_b, &total_b);
+    }
+#else
+    (void) had;
+#endif
 }
 
 // For the destructor: what is left of m, and its addresses, without throwing.
@@ -520,7 +591,7 @@ void* Engine::kv_alloc(size_t bytes, int per) {
     if (again_ != SIZE_MAX) return bufs_.at(again_++).p;
     const size_t all = (size_t) ((opt_.max_context + per - 1) / per) * bytes;
     void* p = nullptr;
-    if (!vmm_) {
+    if (!vmm_ || !opt_.kv_grow) {
         p = dmalloc(all, "the attention cache");
     } else {
         Kv k;
@@ -753,7 +824,7 @@ void Engine::shrink_cache(size_t bytes) {
     }
     ck(cudaStreamSynchronize(cs(st_)), "the expert cache");
     vmm_unmap(arena_, cut);
-    if (cut > kTail) ck(cudaMemset(exp_ + end, 0, kTail), "the expert cache");
+    if (cut > kTail) zero_vram(exp_ + end, kTail);
     exp_at_ = std::min(exp_at_, end);
     staged_il_ = -1;
 }
@@ -1019,7 +1090,7 @@ Dev Engine::upload(const TensorInfo* t, const std::string& name, int64_t n_in, i
                                     (int64_t) (b - a), n_in, nullptr);
             });
         }
-        ck(cudaMemcpy(d.p, q.data(), out, cudaMemcpyHostToDevice), "weight upload");
+        h2d(d.p, q.data(), out);
         return d;
     }
     const bool as_is = !fix && (t->type == kTypeF32 || (want != kF32 && t->type == kTypeBF16) ||
@@ -1032,7 +1103,7 @@ Dev Engine::upload(const TensorInfo* t, const std::string& name, int64_t n_in, i
     if (!dense_) return d;
     if (dense_at_ > dense_bytes_) throw std::logic_error("the dense arena is too small for " + t->name);
     if (as_is) {
-        ck(cudaMemcpy(d.p, home(*t).data(*t), bytes, cudaMemcpyHostToDevice), "weight upload");
+        h2d(d.p, home(*t).data(*t), bytes);
         return d;
     }
 
@@ -1044,12 +1115,12 @@ Dev Engine::upload(const TensorInfo* t, const std::string& name, int64_t n_in, i
     if (fix)
         for (float& v : f) v = fix(v);
     if (type == kTypeF32) {
-        ck(cudaMemcpy(d.p, f.data(), out, cudaMemcpyHostToDevice), "weight upload");
+        h2d(d.p, f.data(), out);
         return d;
     }
     std::vector<ggml_bf16_t> h(count);
     ggml_fp32_to_bf16_row(f.data(), h.data(), (int64_t) count);
-    ck(cudaMemcpy(d.p, h.data(), out, cudaMemcpyHostToDevice), "weight upload");
+    h2d(d.p, h.data(), out);
     return d;
 }
 
@@ -1135,7 +1206,7 @@ void Engine::fill_expert_cache() {
     } else {
         exp_ = (uint8_t*) dmalloc(arena + 256, "the expert cache");
     }
-    ck(cudaMemset(exp_, 0, arena + 256), "the expert cache");   // the slots' tails stay zero (kTail)
+    zero_vram(exp_, arena + 256);   // the slots' tails stay zero (kTail)
     // Which experts is by value; where they go is by layer, a layer's side by side in the experts' order.
     std::vector<Cand> taken;
     size_t room = arena;
@@ -1151,11 +1222,9 @@ void Engine::fill_expert_cache() {
         uint8_t* s = exp_ + exp_at_;
         exp_at_ += c.bytes;
         const size_t e = (size_t) c.e;
-        ck(cudaMemcpy(s, L.exp_gate + e * L.gu_stride, L.gu_bytes, cudaMemcpyHostToDevice), "expert upload");
-        ck(cudaMemcpy(s + L.gu_bytes, L.exp_up + e * L.gu_stride, L.gu_bytes, cudaMemcpyHostToDevice),
-           "expert upload");
-        ck(cudaMemcpy(s + 2 * L.gu_bytes, L.exp_down + e * L.d_bytes, L.d_bytes, cudaMemcpyHostToDevice),
-           "expert upload");
+        h2d(s, L.exp_gate + e * L.gu_stride, L.gu_bytes);
+        h2d(s + L.gu_bytes, L.exp_up + e * L.gu_stride, L.gu_bytes);
+        h2d(s + 2 * L.gu_bytes, L.exp_down + e * L.d_bytes, L.d_bytes);
         L.slot[e] = s;
         ++cached_;
     }
@@ -1314,7 +1383,7 @@ int Engine::grow_cache(size_t bytes) {
     } catch (const std::runtime_error&) {
     }
     if (arena_.mapped < exp_at_ + kTail) return 0;
-    ck(cudaMemset(exp_ + exp_at_, 0, arena_.mapped - exp_at_), "the expert cache");   // the new slots' tails
+    zero_vram(exp_ + exp_at_, arena_.mapped - exp_at_);   // the new slots' tails
     std::stable_sort(cands.begin(), cands.end(),
                      [](const Cand& a, const Cand& b) { return a.value != b.value ? a.value > b.value : a.e < b.e; });
     std::vector<Cand> taken;
@@ -1332,11 +1401,9 @@ int Engine::grow_cache(size_t bytes) {
         uint8_t* s = exp_ + exp_at_;
         exp_at_ += L.slot_bytes;
         const size_t e = (size_t) c.e;
-        ck(cudaMemcpy(s, L.exp_gate + e * L.gu_stride, L.gu_bytes, cudaMemcpyHostToDevice), "expert upload");
-        ck(cudaMemcpy(s + L.gu_bytes, L.exp_up + e * L.gu_stride, L.gu_bytes, cudaMemcpyHostToDevice),
-           "expert upload");
-        ck(cudaMemcpy(s + 2 * L.gu_bytes, L.exp_down + e * L.d_bytes, L.d_bytes, cudaMemcpyHostToDevice),
-           "expert upload");
+        h2d(s, L.exp_gate + e * L.gu_stride, L.gu_bytes);
+        h2d(s + L.gu_bytes, L.exp_up + e * L.gu_stride, L.gu_bytes);
+        h2d(s + 2 * L.gu_bytes, L.exp_down + e * L.d_bytes, L.d_bytes);
         L.slot[e] = s;
         ++cached_;
     }
@@ -1527,11 +1594,13 @@ void Engine::load(const Options& o) {
     ev_ = ev_row_[0];
     blas_ = blas_create(st_);
     // The card maps VRAM onto reserved addresses a piece at a time: the attention caches grow with the sequence,
-    // and the expert cache has what a short one leaves (cover()).
+    // and the expert cache has what a short one leaves (cover()).  With --kv-whole the attention caches are one
+    // allocation each (kv_alloc()) and the expert cache still gives VRAM to other programs and takes it back
+    // (mind_vram()): refilled in one allocation instead, it only ever got smaller.
     ck(cudaGetDevice(&device_), "cudaGetDevice");
     CUdevice dev = 0;
     int vmm = 0;
-    if (opt_.kv_grow && cuDeviceGet(&dev, device_) == CUDA_SUCCESS &&
+    if (cuDeviceGet(&dev, device_) == CUDA_SUCCESS &&
         cuDeviceGetAttribute(&vmm, CU_DEVICE_ATTRIBUTE_VIRTUAL_MEMORY_MANAGEMENT_SUPPORTED, dev) == CUDA_SUCCESS && vmm) {
         CUmemAllocationProp prop = {};
         prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
@@ -1577,7 +1646,7 @@ void Engine::load(const Options& o) {
         if (pass == 0) {
             dense_bytes_ = dense_at_;
             dense_ = (uint8_t*) dmalloc(dense_bytes_ + 256, "the dense weights");
-            ck(cudaMemset(dense_, 0, dense_bytes_ + 256), "the dense weights");   // between the tensors: kTail
+            zero_vram(dense_, dense_bytes_ + 256);   // between the tensors: kTail
         }
     }
 
@@ -1591,6 +1660,10 @@ void Engine::load(const Options& o) {
     alloc();
     if (!opt_.profile.empty()) read_profile(opt_.profile, (int) layers_.size(), n_expert_, prior_);
     fill_expert_cache();
+    // The weights and the expert cache are written on st_ now (h2d(), zero_vram()): the load is not over until
+    // those are done, so that everything after it - a read of what the cache holds, the first request's cover()
+    // mapping the attention caches - finds what it expects.
+    ck(cudaStreamSynchronize(cs(st_)), "the load");
     // A card of a split that has less free beside its layers than the reserve it keeps by default runs out of VRAM
     // in a later request, where one card alone can do nothing else.  It may be that another program held VRAM when
     // the split was made.  A larger reserve asked for (--vram-reserve-mib) only leaves the card without experts.
