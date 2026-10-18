@@ -5,6 +5,9 @@ bench/prompts/** -text
 *.sh text eol=lf
 *.bat text eol=crlf
 
+# 服务端补丁与上游统一使用 LF，避免 Windows 换行差异造成整文件合并冲突。
+serve/server.py text eol=lf
+
 # copies of real packs' native_experts.txt, parsed byte for byte by tests/core/expert_layout_test.cpp
 tests/data/native_experts/** -text
 
