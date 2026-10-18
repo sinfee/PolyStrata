@@ -4,7 +4,7 @@ import struct
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from serve.server import Service, ByteTokenizer
+from serve.server import Service, ByteTokenizer, model_settings
 
 
 class VisionEffortCompatibility(unittest.TestCase):
@@ -40,6 +40,18 @@ class VisionEffortCompatibility(unittest.TestCase):
     def test_qwen_mapping_unchanged(self):
         svc = self.service('qwen')
         self.assertEqual(svc.model_kwargs({'reasoning_effort': 'high'}, {'reasoning_effort': 'xhigh'}), {'reasoning_effort': 'xhigh'})
+
+    def test_model_settings_preserve_family_effort_after_switch(self):
+        # 上游将配置读取移到模型切换路径，默认档位必须在新入口保留。
+        for family in ('glm5', 'joyai-llm', 'qwen'):
+            svc = self.service(family)
+            for level in ('low', 'high', 'max'):
+                settings = model_settings({'reasoning_effort': level})
+                svc.apply_settings(settings)
+                expected = level if family != 'qwen' else settings['config_effort']
+                self.assertEqual(svc.config_effort, expected)
+            svc.apply_settings(model_settings({}))
+            self.assertIsNone(svc.config_effort)
 
     def test_deepseek_image_alignment(self):
         with tempfile.TemporaryDirectory() as directory:
