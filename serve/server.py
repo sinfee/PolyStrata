@@ -7226,7 +7226,10 @@ def model_settings(cfg: dict, overrides: dict | None = None) -> dict:
 
     effort = None
     if cfg.get("reasoning_effort") is not None:        # #1641: the thinking level of requests that name none
-        effort = clean_shared_defaults({"reasoning_effort": cfg["reasoning_effort"]}).get("reasoning_effort")
+        # PolyStrata 模型可使用 max，通用 Qwen 校验器只识别 high。
+        raw_effort = str(cfg["reasoning_effort"]).strip().lower()
+        checked_effort = "high" if poly_engine(cfg) and raw_effort in ("max", "maximum", "xhigh") else raw_effort
+        effort = clean_shared_defaults({"reasoning_effort": checked_effort}).get("reasoning_effort")
     mode = str(cfg.get("anthropic_thinking") or "model")   # #278: "on_request" = only when the request asks
     if mode not in ("model", "on_request"):
         raise ValueError(f"anthropic_thinking must be \"model\" or \"on_request\", not {mode!r}")

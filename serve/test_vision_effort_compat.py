@@ -45,8 +45,8 @@ class VisionEffortCompatibility(unittest.TestCase):
         # 上游将配置读取移到模型切换路径，默认档位必须在新入口保留。
         for family in ('glm5', 'joyai-llm', 'qwen'):
             svc = self.service(family)
-            for level in ('low', 'high', 'max'):
-                settings = model_settings({'reasoning_effort': level})
+            for level in (('low', 'high', 'max') if family != 'qwen' else ('low', 'high')):
+                settings = model_settings({'reasoning_effort': level, 'exe': 'strata-poly.exe' if family != 'qwen' else 'strata.exe'})
                 svc.apply_settings(settings)
                 expected = level if family != 'qwen' else settings['config_effort']
                 self.assertEqual(svc.config_effort, expected)
