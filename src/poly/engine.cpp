@@ -6,6 +6,7 @@
 #include "gemma4.hpp"
 #include "glm5next.hpp"
 #include "lfm2moe.hpp"
+#include "flint.hpp"
 #include "mmq.hpp"
 #include "qwen35.hpp"
 #include "runtime.hpp"
@@ -378,8 +379,12 @@ Engine::~Engine() {
     mmq_.reset();
     for (void* p : dev_allocs_) cudaFree(p);
     for (Kv& k : kv_) vmm_free(k);
-    for (Seq& q : seqs_)
+    for (Seq& q : seqs_) {
         for (Kv& k : q.kv) vmm_free(k);
+        // The fp16 twins of the int8 caches (Gemma 4's --kv int8) are the sequences'.
+        if (q.twin_k.base) vmm_free(q.twin_k);
+        if (q.twin_v.base) vmm_free(q.twin_v);
+    }
     vmm_free(arena_);
     vmm_free(stage_map_);
     for (void* p : host_allocs_) cudaFreeHost(p);
@@ -629,6 +634,10 @@ void Engine::park_bound() {
     for (size_t il = 0; il < layers_.size(); ++il) q.heads[il] = std::exchange(layers_[il].heads, {});
     q.passes = std::exchange(passes_, {});
     q.tail = std::exchange(tail_, nullptr);
+    // The fp16 twin of the int8 caches is the sequence's too (Gemma 4's --kv int8).
+    q.twin_k = std::exchange(twin_k_, {});
+    q.twin_v = std::exchange(twin_v_, {});
+    q.twin_mapped = std::exchange(twin_mapped_, 0);
 }
 
 // Sequence s's members in place of the ones park_bound() put away, and the architecture's pointers into its
@@ -649,6 +658,10 @@ void Engine::take_bound(int s) {
     for (size_t il = 0; il < layers_.size() && il < q.heads.size(); ++il) layers_[il].heads = std::exchange(q.heads[il], {});
     passes_ = std::exchange(q.passes, {});
     tail_ = std::exchange(q.tail, nullptr);
+    // The fp16 twin of the int8 caches (Gemma 4's --kv int8) comes back with the sequence it belongs to.
+    twin_k_ = std::exchange(q.twin_k, {});
+    twin_v_ = std::exchange(q.twin_v, {});
+    twin_mapped_ = std::exchange(q.twin_mapped, 0);
     bound_ = s;
     again_ = 0;
     alloc_caches();
@@ -989,12 +1002,18 @@ std::unique_ptr<Engine> Engine::open(const Options& o) {
     const std::string name = arch ? arch->s : std::string();
     if (o.kv_format == KvFmt::kQ8_0 && name != "qwen35moe")
         throw std::runtime_error("--kv q8_0 is only supported for qwen35moe models in v1; this is a '" + name + "' model");
+    // int8 and int8k are Gemma 4's: their readers are not the arithmetic q8_0's are, so a model takes one
+    // family or the other rather than a choice between them.
+    if (name != "gemma4" && (o.kv_format == KvFmt::kInt8 || o.kv_format == KvFmt::kInt8K))
+        throw std::runtime_error("--kv int8 and --kv int8k are Gemma 4's; for a qwen35moe model use --kv q8_0 "
+                                 "(this is a '" + name + "' model)");
     const auto make = [&]() -> std::unique_ptr<Engine> {
         if (name == "glm5-next" || name == "glm5next") return std::make_unique<Glm5Next>();   // Unsloth: no hyphen
         if (name == "qwen35moe") return std::make_unique<Qwen35>();
         if (name == "gemma4") return std::make_unique<Gemma4>();
         if (name == "deepseek4") return std::make_unique<DeepSeek4>();
         if (name == "lfm2moe") return std::make_unique<Lfm2Moe>();
+        if (name == "flint") return std::make_unique<Flint>();
         throw std::runtime_error(o.model + " is a '" + name + "' model, which this engine does not run");
     };
     int cards = 1, devices = 1;
@@ -1836,6 +1855,7 @@ void Engine::shared_scratch() {
         gu_ = fbuf(rr * 2 * n_ff_exp_);
         hx_ = fbuf(rr * n_ff_exp_);
         dx_ = fbuf(rr * n_embd_);
+        hf_ = fbuf(rr);
     }
 }
 
@@ -2151,8 +2171,16 @@ void Engine::lin(const Dev& w, const float* x, float* y, int n, const void* xq, 
     }
     // a prompt batch: llama.cpp's matrix-matrix kernels read the weights once for all the tokens
     if (mmq_ && n >= kStageRows && Mmq::fits((int) w.type, w.n_out, w.n_in)) {
+        // A row too large for the halves its blocks keep their sums in goes in divided by a power of two, and x is
+        // left as it was for whatever reads it next (both exact): its product comes out divided by the same.
+        const bool guard = half_sum_guard_ && Mmq::half_sums((int) w.type);
+        float* xs = const_cast<float*>(x);
+        if (guard) guard_half_sums(xs, w.n_in, w.n_in, n, hf_, st_);
         Mmq::quantize(x, nullptr, mqx_, (int) w.type, w.n_in, w.n_in, n, st_);
-        return mmq_->mul(w.p, (int) w.type, w.n_out, w.n_in, 0, 1, mqx_, nullptr, nullptr, n, n, y, w.n_out, st_);
+        if (guard) scale_rows(xs, w.n_in, w.n_in, n, nullptr, hf_, false, st_);
+        mmq_->mul(w.p, (int) w.type, w.n_out, w.n_in, 0, 1, mqx_, nullptr, nullptr, n, n, y, w.n_out, st_);
+        if (guard) scale_rows(y, w.n_out, w.n_out, n, nullptr, hf_, false, st_);
+        return;
     }
     if (!xq) {
         // the tokens' blocks are back to back, so they quantize as one long vector
@@ -2580,6 +2608,7 @@ void Engine::moe_rows(Layer& L, int il, int n) {
 
     const float limit = clamp_exp_[(size_t) il];
     const int gt = (int) L.gu_type, dt = (int) L.d_type;
+    const bool guard = half_sum_guard_ && Mmq::half_sums(dt);   // the down rows keep their sums in halves
     const int64_t ff = n_ff_exp_, ff2 = 2 * ff;
     int holds = -1;   // the round in the buffer when this call is done
     // The card's part.  With the CPU's beside it, the rows of its experts' places are left at nothing.
@@ -2610,11 +2639,13 @@ void Engine::moe_rows(Layer& L, int il, int n) {
         if (rc > 0) {
             if (gelu_) geglu_rows(gu_, hx_, n_ff_exp_, rc, st_);
             else swiglu_clamp_rows(gu_, hx_, n_ff_exp_, rc, limit, st_);
+            if (guard) guard_half_sums(hx_, ff, n_ff_exp_, rc, hf_, st_);
             Mmq::quantize(hx_, nullptr, mq2_, dt, ff, ff, rc, st_);
         }
         for (const Run& r : runs_)
             mmq_->mul(slot_of(r.j) + gu2, dt, n_embd_, ff, L.slot_bytes, r.m, mq2_, d_cb + (size_t) r.c * cb_row + r.j,
                       d_place, rc, r.most, dx_, n_embd_, st_);
+        if (guard && rc > 0) scale_rows(dx_, n_embd_, n_embd_, rc, d_place, hf_, false, st_);
 
         // The round the buffer holds goes first and is not copied.  If it holds none of this call's, the experts
         // that go ahead are copied last, so the next call finds them.  The order does not change a round's launches.
@@ -2644,9 +2675,11 @@ void Engine::moe_rows(Layer& L, int il, int n) {
             mmq_->mul(stage_, gt, ff2, n_embd_, gu2, m, mq_, d_bounds + g0, iota_, rg, most, gu_, ff2, st_);
             if (gelu_) geglu_rows(gu_ + (size_t) r0 * ff2, hx_ + (size_t) r0 * ff, n_ff_exp_, rows, st_);
             else swiglu_clamp_rows(gu_ + (size_t) r0 * ff2, hx_ + (size_t) r0 * ff, n_ff_exp_, rows, limit, st_);
+            if (guard) guard_half_sums(hx_ + (size_t) r0 * ff, ff, n_ff_exp_, rows, hf_ + r0, st_);
             Mmq::quantize(hx_ + (size_t) r0 * ff, nullptr, mq2_, dt, ff, ff, rows, st_);
             mmq_->mul(stage_ + down_at, dt, n_embd_, ff, L.d_bytes, m, mq2_, d_rel + (g0 - n_cached + r), d_place + r0,
                       rows, most, dx_, n_embd_, st_);
+            if (guard) scale_rows(dx_, n_embd_, n_embd_, rows, d_place + r0, hf_ + r0, false, st_);
         }
         ck(cudaEventRecord((cudaEvent_t) ev_free_, cs(st_)), "expert staging");
     };

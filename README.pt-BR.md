@@ -3,7 +3,7 @@
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · **Português**
 
 <p align="center"><b>Rode modelos de IA grandes no seu próprio PC</b><br>
-Qwen3.8-Flash-Next, GLM 5.3 Flash, DeepSeek V4 Flash, LFM2.5, Qwen3.6, Ornith 1.5, Gemma 4, Tiel Coder e MiniCPM-V · gratuito e de código aberto</p>
+Qwen3.8-Flash-Next, GLM 5.3 Flash, DeepSeek V4 Flash, LFM2.5, Flint, Qwen3.6, Ornith 1.5, Gemma 4, Tiel Coder e MiniCPM-V · gratuito e de código aberto</p>
 
 <p align="center"><img src="docs/media/speed.svg" width="820" alt="Tokens por segundo ao escrever uma resposta: 94 a 100 com o Qwen3.6-35B-A3B em um notebook com placa de 8 GB, 394 a 395 em uma RTX 5090"></p>
 
@@ -17,14 +17,14 @@ Qwen3.8-Flash-Next, GLM 5.3 Flash, DeepSeek V4 Flash, LFM2.5, Qwen3.6, Ornith 1.
 O PolyStrata roda modelos de IA grandes num PC comum, modelos que normalmente precisam de um servidor.
 Eles conversam, escrevem código e funcionam com seus apps e agentes de programação. Nada sai do seu PC.
 
-Ele roda nove modelos, com dois motores:
+Ele roda dez modelos, com dois motores:
 
 - **[Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)** numa placa de vídeo NVIDIA ou AMD de
   12 GB ou mais, no Windows ou no Linux. Ele também entende imagens. O motor dele é o do
   [Strata](https://github.com/Niko1221/Strata), sem mudanças.
 
-Os outros oito usam um motor escrito para o PolyStrata, com uma placa NVIDIA ou [duas](docs/MULTI_GPU.md#the-strata-poly-models): os oito no Linux, e os seis menores
-também no Windows. São experimentais: só rodaram em um PC com uma placa de 32 GB, e os seis menores também em um
+Os outros nove usam um motor escrito para o PolyStrata, com uma placa NVIDIA ou [duas](docs/MULTI_GPU.md#the-strata-poly-models): os nove no Linux, e os sete menores
+também no Windows. São experimentais: só rodaram em um PC com uma placa de 32 GB, e os sete menores também em um
 notebook com uma placa de 8 GB.
 
 - **[GLM 5.3 Flash](docs/GLM.md)**, o maior: um arquivo de 79 a 114 GB, que fica na maior parte na RAM.
@@ -33,6 +33,9 @@ notebook com uma placa de 8 GB.
 - **[LFM2.5-24B-A2B](docs/LFM.md)** da Liquid AI, um arquivo de 11 a 25 GB. A maioria das camadas dele não tem
   atenção, então uma conversa longa ocupa pouca VRAM: um contexto de 128K ocupa só 2 GB a mais que 32K. A licença
   dele só permite o uso comercial a empresas que faturam menos de 10 milhões de dólares por ano.
+- **[Flint 40B-A2.5B](docs/FLINT.md)** da Recursive, feito para agentes de código: um arquivo de 18 a 42 GB. A
+  maioria das camadas dele só olha 513 tokens para trás, então uma conversa longa ocupa pouca VRAM: um contexto de
+  128K ocupa só 2,6 GB a mais que 32K.
 - **[Qwen3.6-35B-A3B](docs/BACKENDS.md)**, um arquivo de 13 a 23 GB. Ele também entende imagens.
 - **[Ornith 1.5](docs/BACKENDS.md)**, com a arquitetura do Qwen3.6-35B-A3B e outros pesos: um arquivo de 14 a 24 GB. Ele
   também entende imagens.
@@ -163,6 +166,45 @@ llama-bench leu 29,816 tokens a 13,300 tokens/s com o lote padrão do llama.cpp,
 rápido quanto o PolyStrata, e escreveu token a token a 455 tokens/s, e a 369 depois desse prompt; o PolyStrata escreve
 a 452 e 387. Um prompt de cerca de 124,000 tokens em um contexto de 128K foi lido e respondido em 8,7 segundos na
 estação de trabalho; o notebook o leu em 45 segundos.
+
+### Flint 40B-A2.5B
+
+Medido como o LFM2.5-24B-A2B logo acima, nos mesmos dois PCs, com um prompt de cerca de 29,000 tokens.
+
+<table>
+<tr><th>NVIDIA: RTX 4070 Laptop (8 GB), Core i7-14700HX, 32 GB de RAM</th><th>NVIDIA: RTX 5090 (32 GB), Xeon Platinum 8470Q (25 vCPU), 90 GB de RAM</th></tr>
+<tr><td>
+
+| Tamanho | Escreve respostas | Lê seu prompt |
+| --- | ---: | ---: |
+| **UD-Q4_K_XL** | 20-29 tokens/s | 1,310-1,420 tokens/s |
+| **UD-Q3_K_XL** | 61-63 tokens/s | 2,000-2,010 tokens/s |
+| **UD-Q6_K_XL** | 6-7 tokens/s | 830-950 tokens/s |
+| **Q8_0** | 3-4 tokens/s | 770-790 tokens/s |
+
+</td><td>
+
+| Tamanho | Escreve respostas | Lê seu prompt |
+| --- | ---: | ---: |
+| **UD-Q4_K_XL** | 251-252 tokens/s | 12,900 tokens/s |
+| **UD-Q3_K_XL** | 260-264 tokens/s | 13,080-13,200 tokens/s |
+| **Q8_0** | 158-160 tokens/s | 6,740-6,970 tokens/s |
+
+</td></tr>
+</table>
+
+No notebook só o UD-Q3_K_XL fica nos 32 GB de RAM ao lado dos programas da área de trabalho. Os tamanhos maiores leem
+os experts do SSD de novo e de novo, e por isso são lentos lá; o instalador escolhe lá o UD-Q3_K_XL. A placa da
+estação de trabalho guarda inteiros o UD-Q4_K_XL e o UD-Q3_K_XL; o UD-Q6_K_XL não rodou lá.
+
+No notebook o llama.cpp com `--fit on`, o mais rápido dos ajustes testados lá, leu um prompt de 29,442 tokens a 390
+tokens/s e escreveu depois a 35; o PolyStrata o leu a 1,950-2,010 e escreveu a 49-52
+([as medições](bench/results/2026-10-24-laptop-flint-llamacpp-a37cc46/README.md)).
+
+Na estação de trabalho o llama-bench do llama.cpp leu 29,816 tokens a 7,790 tokens/s com o lote padrão de 512 e a
+12,470 com 2,048, o PolyStrata a 12,910-12,940; token a token o llama.cpp escreveu a 222 tokens/s e a 188 depois desse
+prompt, o PolyStrata a 249-256 e 212-213. Um prompt de 124,122 tokens em um contexto de 128K foi lido e respondido em 20
+segundos, e os três fatos escondidos nele foram encontrados.
 
 ### Qwen3.6-35B-A3B
 
@@ -305,7 +347,7 @@ Medido do mesmo jeito, nos mesmos dois PCs. O arquivo dele não tem bloco de ras
 Um prompt de 10,000 tokens é lido a 1,260 tokens/s no notebook e a 8,790 na estação de trabalho. No notebook o Q6_K
 enche os 32 GB de RAM, e é isso que o deixa lento lá.
 
-Os oito modelos do motor próprio do PolyStrata foram medidos com o benchmark dele, que você pode rodar no seu PC:
+Os nove modelos do motor próprio do PolyStrata foram medidos com o benchmark dele, que você pode rodar no seu PC:
 `python polystrata.py benchmark --model <name> --prompt-tokens 24000`
 ([o que ele envia e mostra](docs/BACKENDS.md#benchmark), em inglês).
 O que outras pessoas mediram nas próprias placas, e como comparar com o llama.cpp na sua:
@@ -379,11 +421,25 @@ por ano ([LFM Open License v1.0](https://huggingface.co/LiquidAI/LFM2.5-24B-A2B/
 
 A lista completa: [docs/LFM.md](docs/LFM.md#what-you-need) (em inglês).
 
+### Flint 40B-A2.5B
+
+| | |
+| --- | --- |
+| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 4 GB são ocupados antes do primeiro expert. Ele rodou na placa de 8 GB de um notebook e numa placa de 32 GB. |
+| **RAM** | Cerca de **22, 29, 40 ou 46 GB** ao lado de uma placa de 8 GB para UD-Q3_K_XL, UD-Q4_K_XL, UD-Q6_K_XL e Q8_0, pela estimativa do instalador. Num notebook com 32 GB só o UD-Q3_K_XL ficou na RAM, então o instalador escolhe o UD-Q4_K_XL a partir de cerca de 40 GB. Uma placa de 32 GB guarda o UD-Q4_K_XL inteiro. |
+| **Disco** | 18 a 42 GB para o arquivo do modelo. |
+| **Sistema** | Linux ou Windows 10 / 11, e um driver NVIDIA atual. |
+
+O instalador cuida de todo o resto, como com o Qwen3.6-35B-A3B logo abaixo. Ainda não foi testado numa placa AMD. Ele
+só lê texto. A licença dele é Apache 2.0.
+
+A lista completa: [docs/FLINT.md](docs/FLINT.md#what-you-need) (em inglês).
+
 ### Qwen3.6-35B-A3B
 
 | | |
 | --- | --- |
-| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 5 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB, nessa placa limitada a 8 GB e na placa de 8 GB de um notebook. No Linux uma placa AMD também roda, em beta: o instalador compila o motor no seu PC; testado até agora com Qwen3.6 e Ornith em uma RX 7600. |
+| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 5 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB, nessa placa limitada a 8 GB e na placa de 8 GB de um notebook. Em uma placa AMD ele também roda, em beta, no Linux e no Windows: o instalador compila o motor no seu PC; testado até agora com Qwen3.6 e Ornith em uma RX 7600. |
 | **RAM** | Cerca de **17, 21 ou 27 GB** ao lado de uma placa de 8 GB para os três tamanhos, pela estimativa do instalador. Uma placa de 24 GB guarda inteiros os dois tamanhos menores. Os três tamanhos rodaram em um notebook com 32 GB. |
 | **Disco** | 13, 17 ou 23 GB para o arquivo do modelo, 1 GB a mais para ler imagens. |
 | **Sistema** | Linux ou Windows 10 / 11, e um driver NVIDIA atual. |
@@ -391,7 +447,9 @@ A lista completa: [docs/LFM.md](docs/LFM.md#what-you-need) (em inglês).
 O instalador cuida de todo o resto, como faz com o GLM 5.3 Flash. No Windows ele baixa o motor já compilado da
 última versão publicada. Num processador sem AVX2, ou numa cópia cujo motor mudou depois dessa versão, ele compila o
 motor no lugar, com o compilador de 2022 do Visual Studio e o CUDA Toolkit, e oferece instalar os dois. Ainda não:
-placas AMD no Windows, duas placas no Windows, três placas ou mais.
+duas placas no Windows, três placas ou mais. Em uma placa AMD no Windows o instalador compila o `strata-poly` para a
+placa, como no Linux (as wheels TheRock da AMD em `.rocm-win`), e avisa que rodar ali é novo
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 Desde a 0.1.44, o próprio motor do [Strata](https://github.com/Niko1221/Strata) também roda o Qwen3.6, a partir do
 UD-Q4_K_XL (`--family qwen36-strata`, 32 GB de RAM ou mais). Numa RTX 5090 com UD-Q4_K_XL, ele leu um prompt de 4K
@@ -402,7 +460,7 @@ UD-Q4_K_XL (`--family qwen36-strata`, 32 GB de RAM ou mais). Numa RTX 5090 com U
 
 | | |
 | --- | --- |
-| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 4 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB, nessa placa limitada a 8 GB e na placa de 8 GB de um notebook. No Linux uma placa AMD também roda, em beta: o instalador compila o motor no seu PC; testado até agora com Qwen3.6 e Ornith em uma RX 7600. |
+| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 4 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB, nessa placa limitada a 8 GB e na placa de 8 GB de um notebook. Em uma placa AMD ele também roda, em beta, no Linux e no Windows: o instalador compila o motor no seu PC; testado até agora com Qwen3.6 e Ornith em uma RX 7600. |
 | **RAM** | Cerca de **18, 22 ou 28 GB** ao lado de uma placa de 8 GB para os três tamanhos, pela estimativa do instalador. Uma placa de 24 GB guarda inteiros os dois tamanhos menores. Os três tamanhos rodaram em um notebook com 32 GB. |
 | **Disco** | 14, 17 ou 24 GB para o arquivo do modelo, 1 GB a mais para ler imagens. |
 | **Sistema** | Linux ou Windows 10 / 11, e um driver NVIDIA atual. |
@@ -410,13 +468,15 @@ UD-Q4_K_XL (`--family qwen36-strata`, 32 GB de RAM ou mais). Numa RTX 5090 com U
 O instalador cuida de todo o resto, como faz com o GLM 5.3 Flash. No Windows ele baixa o motor já compilado da
 última versão publicada. Num processador sem AVX2, ou numa cópia cujo motor mudou depois dessa versão, ele compila o
 motor no lugar, com o compilador de 2022 do Visual Studio e o CUDA Toolkit, e oferece instalar os dois. Ainda não:
-placas AMD no Windows, duas placas no Windows, três placas ou mais.
+duas placas no Windows, três placas ou mais. Em uma placa AMD no Windows o instalador compila o `strata-poly` para a
+placa, como no Linux (as wheels TheRock da AMD em `.rocm-win`), e avisa que rodar ali é novo
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 ### Gemma 4 26B-A4B
 
 | | |
 | --- | --- |
-| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 6 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB, nessa placa limitada a 8 GB e na placa de 8 GB de um notebook. No Linux uma placa AMD também roda, em beta: o instalador compila o motor no seu PC; testado até agora com Qwen3.6 e Ornith em uma RX 7600. |
+| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 6 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB, nessa placa limitada a 8 GB e na placa de 8 GB de um notebook. Em uma placa AMD ele também roda, em beta, no Linux e no Windows: o instalador compila o motor no seu PC; testado até agora com Qwen3.6 e Ornith em uma RX 7600. |
 | **RAM** | Cerca de **15, 18 ou 21 GB** ao lado de uma placa de 8 GB para os três tamanhos, pela estimativa do instalador. Pela mesma estimativa, uma placa de 16 GB guarda inteiros os dois tamanhos menores. Os três tamanhos rodaram em um notebook com 32 GB. |
 | **Disco** | 11, 13 ou 17 GB para o arquivo do modelo e o modelo de rascunho dele, 1 GB a mais para ler imagens. |
 | **Sistema** | Linux ou Windows 10 / 11, e um driver NVIDIA atual. |
@@ -424,13 +484,15 @@ placas AMD no Windows, duas placas no Windows, três placas ou mais.
 O instalador cuida de todo o resto, como faz com o GLM 5.3 Flash. No Windows ele baixa o motor já compilado da
 última versão publicada. Num processador sem AVX2, ou numa cópia cujo motor mudou depois dessa versão, ele compila o
 motor no lugar, com o compilador de 2022 do Visual Studio e o CUDA Toolkit, e oferece instalar os dois. Ainda não:
-placas AMD no Windows, duas placas no Windows, três placas ou mais.
+duas placas no Windows, três placas ou mais. Em uma placa AMD no Windows o instalador compila o `strata-poly` para a
+placa, como no Linux (as wheels TheRock da AMD em `.rocm-win`), e avisa que rodar ali é novo
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 ### Tiel Coder 35B-A3B
 
 | | |
 | --- | --- |
-| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 5 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB, nessa placa limitada a 8 GB e na placa de 8 GB de um notebook. No Linux uma placa AMD também roda, em beta: o instalador compila o motor no seu PC; testado até agora com Qwen3.6 e Ornith em uma RX 7600. |
+| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 5 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB, nessa placa limitada a 8 GB e na placa de 8 GB de um notebook. Em uma placa AMD ele também roda, em beta, no Linux e no Windows: o instalador compila o motor no seu PC; testado até agora com Qwen3.6 e Ornith em uma RX 7600. |
 | **RAM** | Cerca de **18, 21 ou 27 GB** ao lado de uma placa de 8 GB para os três tamanhos, pela estimativa do instalador. Uma placa de 24 GB guarda inteiros os três tamanhos. Os três tamanhos rodaram em um notebook com 32 GB. |
 | **Disco** | 14, 17 ou 23 GB para o arquivo do modelo, 1 GB a mais para ler imagens. |
 | **Sistema** | Linux ou Windows 10 / 11, e um driver NVIDIA atual. |
@@ -438,13 +500,15 @@ placas AMD no Windows, duas placas no Windows, três placas ou mais.
 O instalador cuida de todo o resto, como faz com o GLM 5.3 Flash. No Windows ele baixa o motor já compilado da
 última versão publicada. Num processador sem AVX2, ou numa cópia cujo motor mudou depois dessa versão, ele compila o
 motor no lugar, com o compilador de 2022 do Visual Studio e o CUDA Toolkit, e oferece instalar os dois. Ainda não:
-placas AMD no Windows, duas placas no Windows, três placas ou mais.
+duas placas no Windows, três placas ou mais. Em uma placa AMD no Windows o instalador compila o `strata-poly` para a
+placa, como no Linux (as wheels TheRock da AMD em `.rocm-win`), e avisa que rodar ali é novo
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 ### MiniCPM-V 4.7 35B-A3B
 
 | | |
 | --- | --- |
-| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 3.5 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB e na placa de 8 GB de um notebook. No Linux uma placa AMD também roda, em beta: o instalador compila o motor no seu PC; ele rodou em uma RX 7600. |
+| **Placa de vídeo** | Uma placa **NVIDIA** GeForce RTX série 20 ou mais nova com **8 GB de VRAM ou mais**. Cerca de 3.5 GB são ocupados antes do primeiro expert. Ele rodou numa placa de 32 GB e na placa de 8 GB de um notebook. Em uma placa AMD ele também roda, em beta, no Linux e no Windows: o instalador compila o motor no seu PC; ele rodou em uma RX 7600. |
 | **RAM** | Cerca de **19, 25 ou 31 GB** ao lado de uma placa de 8 GB para os três tamanhos, pela estimativa do instalador. Uma placa de 32 GB guarda inteiros os três tamanhos. Os três tamanhos rodaram em um notebook com 32 GB. |
 | **Disco** | 16, 21 ou 29 GB para o arquivo do modelo, 1 GB a mais para ler imagens. |
 | **Sistema** | Linux ou Windows 10 / 11, e um driver NVIDIA atual. |
@@ -452,7 +516,9 @@ placas AMD no Windows, duas placas no Windows, três placas ou mais.
 O instalador cuida de todo o resto, como faz com o GLM 5.3 Flash. No Windows ele baixa o motor já compilado da
 última versão publicada. Num processador sem AVX2, ou numa cópia cujo motor mudou depois dessa versão, ele compila o
 motor no lugar, com o compilador de 2022 do Visual Studio e o CUDA Toolkit, e oferece instalar os dois. Ainda não:
-placas AMD no Windows, duas placas no Windows, três placas ou mais.
+duas placas no Windows, três placas ou mais. Em uma placa AMD no Windows o instalador compila o `strata-poly` para a
+placa, como no Linux (as wheels TheRock da AMD em `.rocm-win`), e avisa que rodar ali é novo
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 Do que cada um dos cinco precisa e como foi conferido: [docs/BACKENDS.md](docs/BACKENDS.md#install) (em inglês).
 
@@ -475,21 +541,21 @@ conectar seus apps. Ferramentas de IA também podem instalar, iniciar e parar o 
 [Baixe o PolyStrata](https://github.com/VecSzn/PolyStrata/archive/refs/heads/main.zip) e descompacte (ou use `git clone`).
 **Windows:** clique duas vezes em **`START-HERE.bat`**. **Linux:** rode **`./setup.sh`** na pasta do PolyStrata.
 
-**Mac (Apple Silicon, M1 a M5, macOS 15 ou mais recente):** instale uma vez as Command Line Tools da Apple (`xcode-select --install` no Terminal; o Xcode em si não é necessário). Depois abra o Terminal na pasta do PolyStrata e rode **`./setup.sh`**. Ele compila o motor do Mac no seu Mac (uns 7 minutos), faz as mesmas perguntas, baixa o modelo e o inicia. Da próxima vez, `./setup.sh` inicia na hora. Qual tamanho cabe no seu Mac e qual a velocidade: [docs/MAC.md](docs/MAC.md).
+**Mac (Apple Silicon, M1 a M5, macOS 15 ou mais recente):** instale uma vez as Command Line Tools da Apple (`xcode-select --install` no Terminal; o Xcode em si não é necessário). Depois abra o Terminal na pasta do PolyStrata e rode **`./setup.sh`**. Ele compila o motor do Mac no seu Mac (uns 7 minutos), faz as mesmas perguntas, baixa o modelo e o inicia. Da próxima vez, `./setup.sh` inicia na hora. Qual tamanho cabe no seu Mac e qual a velocidade: [docs/MAC.md](docs/MAC.md). O motor do Mac roda só o Qwen3.8-Flash-Next; os outros nove modelos precisam de uma placa NVIDIA ou AMD.
 
 Os passos são os mesmos para NVIDIA e AMD. O instalador encontra sua placa e configura o engine certo para ela.
 Ele faz algumas perguntas:
 
 - qual modelo e qual tamanho,
 - quanto contexto (quanto texto o modelo guarda na memória),
-- se ele deve entender imagens (o GLM 5.3 Flash, o DeepSeek V4 Flash e o LFM2.5 não entendem).
+- se ele deve entender imagens (o GLM 5.3 Flash, o DeepSeek V4 Flash, o LFM2.5 e o Flint não entendem).
 
 Aperte Enter em cada uma para usar a resposta recomendada. Depois ele baixa o modelo (cerca de 70 GB para o
-Qwen3.8-Flash-Next, 79 a 114 GB para o GLM 5.3 Flash, 91 GB para o DeepSeek V4 Flash, 11 a 29 GB para os outros seis) e o inicia.
+Qwen3.8-Flash-Next, 79 a 114 GB para o GLM 5.3 Flash, 91 GB para o DeepSeek V4 Flash, 11 a 42 GB para os outros sete) e o inicia.
 Se o download parar, rode de novo: ele continua de onde parou. Seu navegador abre o app do PolyStrata em
 `http://127.0.0.1:8080`.
 
-Os nove estão na lista de modelos do instalador. `./setup.sh --family glm`, `deepseek`, `lfm25`, `qwen36`, `ornith`,
+Os dez estão na lista de modelos do instalador. `./setup.sh --family glm`, `deepseek`, `lfm25`, `qwen36`, `ornith`,
 `gemma4`, `tiel` ou `minicpmv` vai direto para um deles ([o que ele pergunta e grava](docs/GLM.md#install), em inglês).
 
 > **Enquanto o modelo inicia, seu PC pode ficar lento ou parar de responder por 1-3 minutos** (mais na primeira vez).
@@ -586,6 +652,23 @@ Cinco tamanhos. O instalador escolhe UD-Q4_K_XL, ou UD-Q3_K_XL num PC com menos 
 Contra o Q8_0, em cinco prompts de 256 tokens cada, os outros tamanhos escolhem o token mais provável do Q8_0 em 96,8%
 dos passos (UD-Q6_K_XL), 95,5% (UD-Q4_K_XL), 92,7% (QAD-Q4_0) e 91,6% (UD-Q3_K_XL).
 
+### Flint 40B-A2.5B
+
+Quatro tamanhos. Ao lado de uma placa de 8 GB o instalador escolhe o UD-Q4_K_XL a partir de cerca de 40 GB de RAM e o
+UD-Q3_K_XL abaixo disso; ao lado de uma placa maior o UD-Q4_K_XL precisa de menos. Os outros são escolhidos pelo nome:
+`--model Q8_0`.
+
+| Tamanho | O que é | Download | RAM ao lado de uma placa de 8 GB |
+| --- | --- | ---: | ---: |
+| **UD-Q4_K_XL** | o modelo inteiro com experts de 4 e 5 bits ([Unsloth](https://huggingface.co/unsloth/flint-GGUF)) | 25 GB | cerca de 29 GB |
+| **UD-Q3_K_XL** | o mesmo com experts de 3 bits: a menor RAM | 18 GB | cerca de 22 GB |
+| **UD-Q6_K_XL** | experts de 6 bits | 36 GB | cerca de 40 GB |
+| **Q8_0** | 8 bits em tudo, o mais próximo do modelo como foi treinado | 42 GB | cerca de 46 GB |
+
+No notebook de 32 GB o arquivo do UD-Q4_K_XL não ficou na RAM: ele escreveu um chat curto a 20-29 tokens/s, o
+UD-Q3_K_XL a 61-63. Contra o Q8_0, em cinco prompts de 256 tokens cada, os outros tamanhos escolhem o token mais
+provável do Q8_0 em 97,8% dos passos (UD-Q6_K_XL), 95,9% (UD-Q4_K_XL) e 94,0% (UD-Q3_K_XL).
+
 ### Qwen3.6-35B-A3B
 
 Três tamanhos por enquanto. O instalador escolhe UD-Q3_K_M, ou UD-Q2_K_XL num PC com menos RAM. UD-Q4_K_M é escolhido pelo nome: `--model UD-Q4_K_M`.
@@ -650,7 +733,7 @@ Três tamanhos por enquanto, da OpenBMB. O instalador escolhe Q4_K_M, ou mix_q3g
 
 ## Como usar
 
-Os nove modelos são usados do mesmo jeito: o mesmo app, a mesma API.
+Os dez modelos são usados do mesmo jeito: o mesmo app, a mesma API.
 
 <p align="center"><img src="docs/media/runpagoda.png" width="900" alt="A aba Monitor do app PolyStrata ao lado de um agente de programação"><br>
 <sub>O <b>Monitor</b> do app PolyStrata (à esquerda) enquanto um agente de programação escreve o jardim com pagode do vídeo (à direita). Uma captura de tela do <a href="https://github.com/Niko1221/Strata">Strata</a>.</sub></p>
@@ -670,12 +753,12 @@ Os nove modelos são usados do mesmo jeito: o mesmo app, a mesma API.
 
 Onde eles diferem:
 
-| | Qwen3.8-Flash-Next | GLM 5.3 Flash | DeepSeek V4 Flash | LFM2.5-24B-A2B | Qwen3.6-35B-A3B, Ornith 1.5, Gemma 4 26B-A4B, Tiel Coder 35B-A3B, MiniCPM-V 4.7 35B-A3B |
-| --- | --- | --- | --- | --- | --- |
-| **Imagens** | Responda sim para "Images?" na instalação. Depois clique em **Picture** no chat, ou anexe imagens no seu app. Placas AMD entendem imagens no Linux usando o processador; no Windows, ainda não. | Ainda não. | Ele só lê texto. | Ele só lê texto. | Responda sim para "Images?" na instalação, e depois como no Qwen3.8-Flash-Next. Numa placa com menos de 16 GB, o codificador de imagens roda no processador, e uma imagem leva alguns segundos. |
-| **Uma requisição por vez** | Por padrão, o PolyStrata responde uma requisição e as outras esperam. Para responder várias ao mesmo tempo, defina `"parallel": 2` ([BATCHING.md](docs/BATCHING.md)). Numa placa de 12 GB, isso deixa cada resposta mais lenta. | Uma por vez, as outras esperam. | Uma por vez, as outras esperam. | Uma por vez, as outras esperam. | Uma por vez, as outras esperam. |
-| **Várias conversas** | A última é mantida, então as mensagens seguintes começam em segundos. Dois argumentos do motor mantêm várias na RAM ([detalhes](docs/DETAILS.md#using-it)). | A última é mantida. A instalação pergunta se deve manter várias na RAM, para que um agente e seus subagentes se revezem sem que os prompts sejam lidos de novo ([como](docs/GLM.md#several-conversations-at-once)). | Como o GLM 5.3 Flash. | Como o GLM 5.3 Flash. | Como o GLM 5.3 Flash. |
-| **Prompts longos** | O PolyStrata lê a primeira mensagem de uma conversa inteira, cerca de 1 minuto a cada 30,000 tokens. As mensagens seguintes começam em segundos. | A primeira mensagem é lida inteira, cerca de 40 segundos a cada 30,000 tokens. | A primeira mensagem é lida inteira, cerca de 29 segundos a cada 30,000 tokens. | A primeira mensagem é lida inteira: 30,000 tokens levam 1,3 a 1,5 segundo na estação de trabalho e 8 a 10 segundos no notebook de 8 GB. | A primeira mensagem é lida por inteiro: 30,000 tokens levam 4 a 5 segundos na estação de trabalho e 14 a 27 segundos no notebook de 8 GB. |
+| | Qwen3.8-Flash-Next | GLM 5.3 Flash | DeepSeek V4 Flash | LFM2.5-24B-A2B | Flint 40B-A2.5B | Qwen3.6-35B-A3B, Ornith 1.5, Gemma 4 26B-A4B, Tiel Coder 35B-A3B, MiniCPM-V 4.7 35B-A3B |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Imagens** | Responda sim para "Images?" na instalação. Depois clique em **Picture** no chat, ou anexe imagens no seu app. Placas AMD entendem imagens no Linux usando o processador; no Windows, ainda não. | Ainda não. | Ele só lê texto. | Ele só lê texto. | Ele só lê texto. | Responda sim para "Images?" na instalação, e depois como no Qwen3.8-Flash-Next. Numa placa com menos de 16 GB, o codificador de imagens roda no processador, e uma imagem leva alguns segundos. |
+| **Uma requisição por vez** | Por padrão, o PolyStrata responde uma requisição e as outras esperam. Para responder várias ao mesmo tempo, defina `"parallel": 2` ([BATCHING.md](docs/BATCHING.md)). Numa placa de 12 GB, isso deixa cada resposta mais lenta. | Uma por vez, as outras esperam. | Uma por vez, as outras esperam. | Uma por vez, as outras esperam. | Uma por vez, as outras esperam. | Uma por vez, as outras esperam. |
+| **Várias conversas** | A última é mantida, então as mensagens seguintes começam em segundos. Dois argumentos do motor mantêm várias na RAM ([detalhes](docs/DETAILS.md#using-it)). | A última é mantida. A instalação pergunta se deve manter várias na RAM, para que um agente e seus subagentes se revezem sem que os prompts sejam lidos de novo ([como](docs/GLM.md#several-conversations-at-once)). | Como o GLM 5.3 Flash. | Como o GLM 5.3 Flash. | Como o GLM 5.3 Flash. | Como o GLM 5.3 Flash. |
+| **Prompts longos** | O PolyStrata lê a primeira mensagem de uma conversa inteira, cerca de 1 minuto a cada 30,000 tokens. As mensagens seguintes começam em segundos. | A primeira mensagem é lida inteira, cerca de 40 segundos a cada 30,000 tokens. | A primeira mensagem é lida inteira, cerca de 29 segundos a cada 30,000 tokens. | A primeira mensagem é lida inteira: 30,000 tokens levam 1,3 a 1,5 segundo na estação de trabalho e 8 a 10 segundos no notebook de 8 GB. | A primeira mensagem é lida inteira: 30,000 tokens levam cerca de 2,3 segundos na estação de trabalho e 15 a 22 segundos no notebook de 8 GB. | A primeira mensagem é lida por inteiro: 30,000 tokens levam 4 a 5 segundos na estação de trabalho e 14 a 27 segundos no notebook de 8 GB. |
 
 Mais: [onde suas conversas ficam salvas](docs/INSTALL.md#where-things-are-stored), [a API](docs/DETAILS.md#using-it).
 
@@ -789,6 +872,23 @@ Cada parte e seus números: [docs/DEEPSEEK.md](docs/DEEPSEEK.md#how-it-differs-f
 
 Cada parte e seus números: [docs/LFM.md](docs/LFM.md) (em inglês).
 
+### Flint 40B-A2.5B
+
+<p align="center"><img src="docs/media/how-it-works-flint.svg" width="860" alt="Os 12,032 experts do modelo: os que uma resposta escolhe sem parar na placa de vídeo, os outros na RAM, o arquivo do modelo no SSD"></p>
+
+- **O modelo é uma equipe de 12,032 pequenos experts**, 256 em cada uma de 47 camadas. Cada palavra precisa de só 6 de
+  cada camada, e de um expert compartilhado que toda palavra usa.
+- **A maioria das 49 camadas dele olha 513 tokens para trás.** 35 delas só atendem aos últimos 513 tokens e guardam
+  um anel de linhas que não cresce. Só as outras 14 lembram a conversa inteira, então a memória dele de uma conversa é
+  pequena: um contexto de 128K ocupa só 2,6 GB de VRAM a mais que 32K.
+- **Sua placa de vídeo** guarda quantos experts couberem: cerca de 1,600 a 2,500 numa placa de 8 GB, todos os do
+  UD-Q4_K_XL numa placa de 32 GB. **Sua RAM** guarda os outros, e **seu processador** calcula esses ao mesmo tempo.
+  **Seu SSD** guarda o arquivo do modelo, usado onde está, sem uma segunda cópia.
+- **Sem bloco de rascunho.** O modelo não tem nada que adivinhe o que vem a seguir, então o motor só adivinha a
+  partir do texto que a conversa repete.
+
+Cada parte e seus números: [docs/FLINT.md](docs/FLINT.md) (em inglês).
+
 ### Qwen3.6-35B-A3B
 
 <p align="center"><img src="docs/media/how-it-works-qwen36.svg" width="860" alt="Os 10,240 experts do modelo: os que uma resposta escolhe sem parar na placa de vídeo, os outros na RAM, o arquivo do modelo no SSD"></p>
@@ -898,7 +998,8 @@ O GLM 5.3 Flash roda a partir dos arquivos de [neuralll](https://huggingface.co/
 da Unsloth e de patrickbdevaney. O Qwen3.6-35B-A3B é da equipe Qwen, o Gemma 4 do Google e o DeepSeek V4 Flash da DeepSeek, os três na quantização da
 [Unsloth](https://huggingface.co/unsloth). O LFM2.5-24B-A2B é da
 [Liquid AI](https://huggingface.co/LiquidAI/LFM2.5-24B-A2B), na quantização da Unsloth e no QAD-Q4_0 da própria
-Liquid AI. O Ornith 1.5 é da ornith-ai, na quantização APEX de
+Liquid AI. O Flint 40B-A2.5B é da [Recursive](https://huggingface.co/RecursiveSI/flint), na quantização
+da Unsloth. O Ornith 1.5 é da ornith-ai, na quantização APEX de
 [mudler](https://huggingface.co/mudler/Ornith-1.5-35B-A3B-APEX-MTP-GGUF). O Tiel Coder 35B-A3B é o Ornith 1.5 na quantização de
 [peculiar-ragdoll](https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-MTP);
 [u/Sensitive_Song4219](https://www.reddit.com/r/LocalLLM/comments/1x22inc/comment/pf3r111/) descobriu que ele roda no PolyStrata. O MiniCPM-V 4.7 35B-A3B é da [OpenBMB](https://huggingface.co/openbmb/MiniCPM-V-4.7-35B-A3B-gguf),

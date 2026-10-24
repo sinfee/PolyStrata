@@ -30,6 +30,9 @@ leaves out.
 | [biurquezjoselina-design](https://github.com/VecSzn/PolyStrata/issues/21) | RTX 5090 D v2 24 GB | Core i7-14700KF, 13 threads; 128 GB DDR5; Windows 10 | DeepSeek V4 Flash UD-IQ4_XS (Unsloth), 136.7 GB, more than the RAM; 992 experts in VRAM | 32K, 256K set in the run config | no MTP; guesses from repeated text | with 0.1.44.1-poly.6: 3.4 after a short prompt, 2.2 to 2.8 after 2.5K to 10K; with poly.5: 1.0 to 2.1 | poly.6: 50 at 2.5K, 100 at 10K; poly.5: 23 and 53 | RAM at its 127.6 GiB ceiling and the rest paged from the disk; poly.6 loads in 28 s where poly.5 took 110 s and kept 58 GiB of converted MXFP4 experts in RAM; llama.cpp b11706, experts on the CPU, the same file and prompt: 8.6; with UD-Q4_K_XL (155 GB), llama.cpp 9.5 to 10.6 and poly.6 1.4 to 2.2 |
 | [Haroldyolo](https://github.com/VecSzn/PolyStrata/discussions/47) | RTX 4070 Ti SUPER 16 GB | Ryzen 7 7800X3D; 30.9 GiB; Windows 11 | Qwen3.6-35B-A3B UD-Q3_K_M, 0.1.45-poly.1, `BENCH.bat` | 64K | on | 165 in a short chat (121 to 196), 143 in an agent session | 3,287 at 4K, 3,615 at 16K | the same PC runs Qwen3.8-Flash-Next Coder IQ1_M on the Strata project's engine at 59 writing, 2,033 and 2,646 reading |
 | [Haroldyolo](https://github.com/VecSzn/PolyStrata/discussions/47) | RTX 4070 Ti SUPER 16 GB | Ryzen 7 7800X3D; 30.9 GiB; Windows 11 | Qwen3.6-35B-A3B UD-Q4_K_M, 0.1.45-poly.1, `BENCH.bat` | 128K | on | 164 in a short chat (119 to 212), 157 in an agent session | 2,043 at 4K, 3,078 at 16K | |
+| [Haroldyolo](https://github.com/VecSzn/PolyStrata/discussions/56) | RTX 4070 Ti SUPER 16 GB | Ryzen 7 7800X3D; 30.9 GiB; Windows 11 | Tiel Coder 35B-A3B UD-Q4_K_XL, main at a418c11a, `tools/strata_bench.py` | 64K | on | 141 in a short chat (113 to 166), 118 in an agent session | 1,959 at 4K, 2,989 at 16K | the Qwen3.6 UD-Q4_K_M rows above, on the same PC |
+| [Haroldyolo](https://github.com/VecSzn/PolyStrata/discussions/67) | RTX 4070 Ti SUPER 16 GB | Ryzen 7 7800X3D; 30.9 GiB; Windows 11 | MiniCPM-V 4.7 35B-A3B Q4_K_M, main at a418c11a, `tools/strata_bench.py` | 64K | no | 134 in a short chat (95 to 142), 123 in an agent session | 1,998 at 4K, 3,180 at 16K | the Tiel Coder and Qwen3.6 rows above, on the same PC |
+| [Danielkgr](https://github.com/VecSzn/PolyStrata/pull/64#issuecomment-6376226685) | RX 7900 XTX 24 GB (gfx1100) and Radeon AI PRO R9700 32 GB (gfx1201, on a chipset x4 link), the layers split over both | Core i5-14600KF, 9 threads; 96 GB DDR4-3200; Linux, ROCm 7.14.1 from AMD's wheels | Ornith 1.5 122B Q5_K_M (ornith-ai), 82.6 GiB, main at 90347087; 6,213 of 12,544 experts in VRAM | 128K, `--kv-whole` | on, 65% to 85% of the guesses kept on short replies | 20.7 to 22.0 at 98K to 100K tokens; 28 to 31 in a short reply | 536 for a 98K-token prompt with `--prompt-batch 2048`, 472 with 1,024; later turns of the session 1.8 to 2.0 s | llama.cpp Vulkan, the same cards, file and session: 527 s for the first prompt where PolyStrata took 184, 6.9 s for later turns, 13.5 writing at 100K; against llama.cpp on the CPU, the same most likely token at 93% of 281 steps |
 
 Setup offers Tiel Coder now (`--family tiel`), and not the HauhauCS file. How to give setup such a file is in the
 [FAQ](FAQ.md#can-i-run-a-fine-tune-or-another-model-with-the-same-architecture).
@@ -40,7 +43,10 @@ gives the two speeds the README uses ([what it sends and prints](BACKENDS.md#ben
 
 An upstream-suite report from an [RX 6700 XT 12 GB, Ryzen 5 3600 and 32 GB RAM](../bench/results/2026-10-19-community-rx6700xt-polystrata/README.md)
 includes Qwen3.6, Ornith, Tiel Coder, Gemma 4, MiniCPM-V and LFM2.5 at 32K and 64K,
-with per-request data, exact settings and a separate Qwen UD-Q4_K_M speed control.
+with per-request data, exact settings and a separate Qwen UD-Q4_K_M speed control. A second one from an
+[RX 6700 XT 12 GB, Ryzen 5 5600X and 32 GB RAM](../bench/results/2026-10-22-community-rx6700xt-5600x-polystrata/README.md)
+has Qwen3.6, LFM2.5, Tiel Coder and Gemma 4 QAT at 32K and 64K, a rerun of Qwen on a newer commit and a Gemma
+draft A/B; its Qwen3.6 and LFM2.5 rows land within a few percent of the first.
 
 ### Comparing with llama.cpp
 

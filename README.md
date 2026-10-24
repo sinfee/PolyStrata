@@ -3,7 +3,7 @@
 **English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [Português](README.pt-BR.md)
 
 <p align="center"><b>Run large AI models on your own PC</b><br>
-Qwen3.8-Flash-Next, GLM 5.3 Flash, DeepSeek V4 Flash, LFM2.5, Qwen3.6, Ornith 1.5, Gemma 4, Tiel Coder and MiniCPM-V · free and open source</p>
+Qwen3.8-Flash-Next, GLM 5.3 Flash, DeepSeek V4 Flash, LFM2.5, Flint, Qwen3.6, Ornith 1.5, Gemma 4, Tiel Coder and MiniCPM-V · free and open source</p>
 
 <p align="center"><img src="docs/media/speed.svg" width="820" alt="Tokens per second while writing an answer: 94 to 100 for Qwen3.6-35B-A3B on a laptop with an 8 GB card, 394 to 395 on an RTX 5090"></p>
 
@@ -17,13 +17,13 @@ Qwen3.8-Flash-Next, GLM 5.3 Flash, DeepSeek V4 Flash, LFM2.5, Qwen3.6, Ornith 1.
 PolyStrata runs large AI models on a normal PC, models that usually need a server. They chat, write code and work
 with your apps and coding agents. Nothing leaves your PC.
 
-It runs nine models, on two engines:
+It runs ten models, on two engines:
 
 - **[Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)** on an NVIDIA or AMD graphics card with
   12 GB or more, on Windows or Linux. It also reads pictures. Its engine is the Strata project's, unchanged.
 
-The other eight run on an engine written for PolyStrata, with one NVIDIA card or [two](docs/MULTI_GPU.md#the-strata-poly-models): on Linux, and the six smaller ones on
-Windows too. They are experimental: they have run on one PC with a 32 GB card, and the six smaller ones on a laptop
+The other nine run on an engine written for PolyStrata, with one NVIDIA card or [two](docs/MULTI_GPU.md#the-strata-poly-models): on Linux, and the seven smaller ones on
+Windows too. They are experimental: they have run on one PC with a 32 GB card, and the seven smaller ones on a laptop
 with an 8 GB card as well.
 
 - **[GLM 5.3 Flash](docs/GLM.md)**, the largest: a file of 79 to 114 GB, most of which stays in RAM.
@@ -32,6 +32,8 @@ with an 8 GB card as well.
 - **[LFM2.5-24B-A2B](docs/LFM.md)** by Liquid AI, a file of 11 to 25 GB. Most of its layers have no attention, so a
   long conversation takes little VRAM: a 128K context takes 2 GB more than 32K. Its license allows commercial use
   only to companies with less than 10 million dollars of yearly revenue.
+- **[Flint 40B-A2.5B](docs/FLINT.md)** by Recursive, made for coding agents: a file of 18 to 42 GB. Most of its layers
+  look back only 513 tokens, so a long conversation takes little VRAM: a 128K context takes 2.6 GB more than 32K.
 - **[Qwen3.6-35B-A3B](docs/BACKENDS.md)**, a file of 13 to 23 GB. It also reads pictures.
 - **[Ornith 1.5](docs/BACKENDS.md)**, which has Qwen3.6-35B-A3B's architecture and other weights: a file of 14 to 24 GB. It
   also reads pictures.
@@ -163,6 +165,45 @@ llama-bench read 29,816 tokens at 13,300 tokens/s with llama.cpp's default batch
 fast as PolyStrata, and wrote one token at a time at 455 tokens/s and at 369 after that prompt, where PolyStrata
 writes at 452 and 387. A prompt of about 124,000 tokens in a 128K context was read and answered in 8.7 seconds on the
 workstation; the laptop read it in 45 seconds.
+
+### Flint 40B-A2.5B
+
+Measured the same way as LFM2.5-24B-A2B above, on the same two PCs, with a prompt of about 29,000 tokens.
+
+<table>
+<tr><th>NVIDIA: RTX 4070 Laptop (8 GB), Core i7-14700HX, 32 GB RAM</th><th>NVIDIA: RTX 5090 (32 GB), Xeon Platinum 8470Q (25 vCPU), 90 GB RAM</th></tr>
+<tr><td>
+
+| Size | Writes answers | Reads your prompt |
+| --- | ---: | ---: |
+| **UD-Q4_K_XL** | 20-29 tokens/s | 1,310-1,420 tokens/s |
+| **UD-Q3_K_XL** | 61-63 tokens/s | 2,000-2,010 tokens/s |
+| **UD-Q6_K_XL** | 6-7 tokens/s | 830-950 tokens/s |
+| **Q8_0** | 3-4 tokens/s | 770-790 tokens/s |
+
+</td><td>
+
+| Size | Writes answers | Reads your prompt |
+| --- | ---: | ---: |
+| **UD-Q4_K_XL** | 251-252 tokens/s | 12,900 tokens/s |
+| **UD-Q3_K_XL** | 260-264 tokens/s | 13,080-13,200 tokens/s |
+| **Q8_0** | 158-160 tokens/s | 6,740-6,970 tokens/s |
+
+</td></tr>
+</table>
+
+On the laptop only UD-Q3_K_XL stays in the 32 GB of RAM beside the desktop's programs. The larger sizes keep reading
+experts from the SSD, which is what makes them slow there, and the installer takes UD-Q3_K_XL there. The
+workstation's card holds UD-Q4_K_XL and UD-Q3_K_XL whole; UD-Q6_K_XL was not run there.
+
+On the laptop llama.cpp with `--fit on`, the fastest of the settings tried there, read a prompt of 29,442 tokens at
+390 tokens/s and wrote after it at 35; PolyStrata read it at 1,950 to 2,010 and wrote at 49 to 52
+([the runs](bench/results/2026-10-24-laptop-flint-llamacpp-a37cc46/README.md)).
+
+On the workstation llama-bench of llama.cpp read 29,816 tokens at 7,790 tokens/s with its default batch of 512 and
+at 12,470 with 2,048, where PolyStrata reads at 12,910-12,940; one token at a time llama.cpp wrote at 222 tokens/s and at
+188 after that prompt, PolyStrata at 249-256 and 212-213. A prompt of 124,122 tokens in a 128K context was read and
+answered in 20 seconds, and the three facts hidden in it were found.
 
 ### Qwen3.6-35B-A3B
 
@@ -304,7 +345,7 @@ Measured the same way, on the same two PCs. Its file has no draft block, so it w
 A prompt of 10,000 tokens is read at 1,260 tokens/s on the laptop and at 8,790 on the workstation. On the laptop Q6_K
 fills the 32 GB of RAM, which is what makes it slow there.
 
-The eight models of PolyStrata's own engine were measured with its benchmark, which you can run on your PC:
+The nine models of PolyStrata's own engine were measured with its benchmark, which you can run on your PC:
 `python polystrata.py benchmark --model <name> --prompt-tokens 24000`
 ([what it sends and prints](docs/BACKENDS.md#benchmark)).
 What others measured on their own cards, and how to compare with llama.cpp on yours:
@@ -329,7 +370,7 @@ Experimental, written and tested by community members on their own machines:
 
 - **Older graphics cards** (Tesla P40 / V100, GTX 10, Radeon VII / MI50, RX 6700 XT, RX 5500 XT): [Older GPUs](docs/OLDER_GPUS.md).
 - **Intel Arc**, built from source on Linux: [Intel Arc](docs/INTEL_ARC.md).
-- **Apple Silicon Macs (M1 to M5)**, built from source by `./setup.sh` (the Metal engine): [Mac](docs/MAC.md).
+- **Apple Silicon Macs (M1 to M5)**, Qwen3.8-Flash-Next only, built from source by `./setup.sh` (the Metal engine): [Mac](docs/MAC.md).
 - **AMD Ryzen AI Max (Strix Halo)**, built from source on Linux: [Strix Halo](docs/STRIX_HALO.md).
 - **Older processors without AVX2**: they work, but slowly. [Older CPUs](docs/INSTALL.md#older-cpus-experimental).
 
@@ -379,11 +420,25 @@ revenue ([LFM Open License v1.0](https://huggingface.co/LiquidAI/LFM2.5-24B-A2B/
 
 The full list: [docs/LFM.md](docs/LFM.md#what-you-need).
 
+### Flint 40B-A2.5B
+
+| | |
+| --- | --- |
+| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 4 GB are taken before any expert. It has run on a laptop's 8 GB card and on a 32 GB card. |
+| **RAM** | About **22, 29, 40 or 46 GB** beside an 8 GB card for UD-Q3_K_XL, UD-Q4_K_XL, UD-Q6_K_XL and Q8_0, the installer's estimate. On a laptop with 32 GB only UD-Q3_K_XL stayed in RAM, so the installer takes UD-Q4_K_XL from about 40 GB on. A 32 GB card holds UD-Q4_K_XL whole. |
+| **Disk** | 18 to 42 GB for the model file. |
+| **System** | Linux or Windows 10 / 11, and a current NVIDIA driver. |
+
+The installer sets up everything else, as for Qwen3.6-35B-A3B below. It has not been tried on an AMD card. It reads
+text only. Its license is Apache 2.0.
+
+The full list: [docs/FLINT.md](docs/FLINT.md#what-you-need).
+
 ### Qwen3.6-35B-A3B
 
 | | |
 | --- | --- |
-| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 5 GB are taken before any expert. It has run on a 32 GB card, on that card held to 8 GB, and on a laptop's 8 GB card. On Linux an AMD card can run it as a beta: setup compiles the engine on your PC; tested so far with Qwen3.6 and Ornith on an RX 7600. |
+| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 5 GB are taken before any expert. It has run on a 32 GB card, on that card held to 8 GB, and on a laptop's 8 GB card. On an AMD card it can run as a beta on Linux and under Windows: setup compiles the engine on your PC; tested so far with Qwen3.6 and Ornith on an RX 7600. |
 | **RAM** | About **17, 21 or 27 GB** beside an 8 GB card for the three sizes, the installer's estimate. A card with 24 GB holds the two smaller sizes whole. All three sizes have run on a laptop with 32 GB. |
 | **Disk** | 13, 17 or 23 GB for the model file, 1 GB more to read pictures. |
 | **System** | Linux or Windows 10 / 11, and a current NVIDIA driver. |
@@ -391,7 +446,9 @@ The full list: [docs/LFM.md](docs/LFM.md#what-you-need).
 The installer sets up everything else, as it does for GLM 5.3 Flash. On Windows it downloads the engine ready-made
 from the latest release. On a processor without AVX2, or in a copy whose engine changed after that release, it
 compiles the engine instead with Visual Studio's 2022 compiler and the CUDA toolkit, and offers to install them. Not
-yet: AMD cards on Windows, two cards on Windows, three cards or more.
+yet: two cards on Windows, three cards or more. On an AMD card under Windows setup compiles `strata-poly` for the
+card as it does on Linux (AMD's TheRock wheels in `.rocm-win`) and warns that runs there are new
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 Since its 0.1.44 the [Strata](https://github.com/Niko1221/Strata) project's own engine runs Qwen3.6 too, from UD-Q4_K_XL up
 (`--family qwen36-strata`, 32 GB of RAM or more). On an RTX 5090 with UD-Q4_K_XL it read a 4K prompt 1.6 times as fast
@@ -402,7 +459,7 @@ as strata-poly; a 31K prompt and writing came out about even ([measured](docs/BA
 
 | | |
 | --- | --- |
-| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 4 GB are taken before any expert. It has run on a 32 GB card, on that card held to 8 GB, and on a laptop's 8 GB card. On Linux an AMD card can run it as a beta: setup compiles the engine on your PC; tested so far with Qwen3.6 and Ornith on an RX 7600. |
+| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 4 GB are taken before any expert. It has run on a 32 GB card, on that card held to 8 GB, and on a laptop's 8 GB card. On an AMD card it can run as a beta on Linux and under Windows: setup compiles the engine on your PC; tested so far with Qwen3.6 and Ornith on an RX 7600. |
 | **RAM** | About **18, 22 or 28 GB** beside an 8 GB card for the three sizes, the installer's estimate. A card with 24 GB holds the two smaller sizes whole. All three sizes have run on a laptop with 32 GB. |
 | **Disk** | 14, 17 or 24 GB for the model file, 1 GB more to read pictures. |
 | **System** | Linux or Windows 10 / 11, and a current NVIDIA driver. |
@@ -410,13 +467,15 @@ as strata-poly; a 31K prompt and writing came out about even ([measured](docs/BA
 The installer sets up everything else, as it does for GLM 5.3 Flash. On Windows it downloads the engine ready-made
 from the latest release. On a processor without AVX2, or in a copy whose engine changed after that release, it
 compiles the engine instead with Visual Studio's 2022 compiler and the CUDA toolkit, and offers to install them. Not
-yet: AMD cards on Windows, two cards on Windows, three cards or more.
+yet: two cards on Windows, three cards or more. On an AMD card under Windows setup compiles `strata-poly` for the
+card as it does on Linux (AMD's TheRock wheels in `.rocm-win`) and warns that runs there are new
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 ### Gemma 4 26B-A4B
 
 | | |
 | --- | --- |
-| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 6 GB are taken before any expert. It has run on a 32 GB card, on that card held to 8 GB, and on a laptop's 8 GB card. On Linux an AMD card can run it as a beta: setup compiles the engine on your PC; tested so far with Qwen3.6 and Ornith on an RX 7600. |
+| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 6 GB are taken before any expert. It has run on a 32 GB card, on that card held to 8 GB, and on a laptop's 8 GB card. On an AMD card it can run as a beta on Linux and under Windows: setup compiles the engine on your PC; tested so far with Qwen3.6 and Ornith on an RX 7600. |
 | **RAM** | About **15, 18 or 21 GB** beside an 8 GB card for the three sizes, the installer's estimate. By the same estimate a card with 16 GB holds the two smaller sizes whole. All three sizes have run on a laptop with 32 GB. |
 | **Disk** | 11, 13 or 17 GB for the model file and its draft model, 1 GB more to read pictures. |
 | **System** | Linux or Windows 10 / 11, and a current NVIDIA driver. |
@@ -424,13 +483,15 @@ yet: AMD cards on Windows, two cards on Windows, three cards or more.
 The installer sets up everything else, as it does for GLM 5.3 Flash. On Windows it downloads the engine ready-made
 from the latest release. On a processor without AVX2, or in a copy whose engine changed after that release, it
 compiles the engine instead with Visual Studio's 2022 compiler and the CUDA toolkit, and offers to install them. Not
-yet: AMD cards on Windows, two cards on Windows, three cards or more.
+yet: two cards on Windows, three cards or more. On an AMD card under Windows setup compiles `strata-poly` for the
+card as it does on Linux (AMD's TheRock wheels in `.rocm-win`) and warns that runs there are new
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 ### Tiel Coder 35B-A3B
 
 | | |
 | --- | --- |
-| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 5 GB are taken before any expert. It has run on a 32 GB card, on that card held to 8 GB, and on a laptop's 8 GB card. On Linux an AMD card can run it as a beta: setup compiles the engine on your PC; tested so far with Qwen3.6 and Ornith on an RX 7600. |
+| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 5 GB are taken before any expert. It has run on a 32 GB card, on that card held to 8 GB, and on a laptop's 8 GB card. On an AMD card it can run as a beta on Linux and under Windows: setup compiles the engine on your PC; tested so far with Qwen3.6 and Ornith on an RX 7600. |
 | **RAM** | About **18, 21 or 27 GB** beside an 8 GB card for the three sizes, the installer's estimate. A card with 24 GB holds all three sizes whole. All three sizes have run on a laptop with 32 GB. |
 | **Disk** | 14, 17 or 23 GB for the model file, 1 GB more to read pictures. |
 | **System** | Linux or Windows 10 / 11, and a current NVIDIA driver. |
@@ -438,13 +499,15 @@ yet: AMD cards on Windows, two cards on Windows, three cards or more.
 The installer sets up everything else, as it does for GLM 5.3 Flash. On Windows it downloads the engine ready-made
 from the latest release. On a processor without AVX2, or in a copy whose engine changed after that release, it
 compiles the engine instead with Visual Studio's 2022 compiler and the CUDA toolkit, and offers to install them. Not
-yet: AMD cards on Windows, two cards on Windows, three cards or more.
+yet: two cards on Windows, three cards or more. On an AMD card under Windows setup compiles `strata-poly` for the
+card as it does on Linux (AMD's TheRock wheels in `.rocm-win`) and warns that runs there are new
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 ### MiniCPM-V 4.7 35B-A3B
 
 | | |
 | --- | --- |
-| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 3.5 GB are taken before any expert. It has run on a 32 GB card and on a laptop's 8 GB card. On Linux an AMD card can run it as a beta: setup compiles the engine on your PC; it has run on an RX 7600. |
+| **Graphics card** | One **NVIDIA** GeForce RTX 20 series card or newer with **8 GB of VRAM or more**. About 3.5 GB are taken before any expert. It has run on a 32 GB card and on a laptop's 8 GB card. On an AMD card it can run as a beta on Linux and under Windows: setup compiles the engine on your PC; it has run on an RX 7600. |
 | **RAM** | About **19, 25 or 31 GB** beside an 8 GB card for the three sizes, the installer's estimate. A card with 32 GB holds all three sizes whole. All three sizes have run on a laptop with 32 GB. |
 | **Disk** | 16, 21 or 29 GB for the model file, 1 GB more to read pictures. |
 | **System** | Linux or Windows 10 / 11, and a current NVIDIA driver. |
@@ -452,7 +515,9 @@ yet: AMD cards on Windows, two cards on Windows, three cards or more.
 The installer sets up everything else, as it does for GLM 5.3 Flash. On Windows it downloads the engine ready-made
 from the latest release. On a processor without AVX2, or in a copy whose engine changed after that release, it
 compiles the engine instead with Visual Studio's 2022 compiler and the CUDA toolkit, and offers to install them. Not
-yet: AMD cards on Windows, two cards on Windows, three cards or more.
+yet: two cards on Windows, three cards or more. On an AMD card under Windows setup compiles `strata-poly` for the
+card as it does on Linux (AMD's TheRock wheels in `.rocm-win`) and warns that runs there are new
+([AMD_HIP.md](docs/AMD_HIP.md#strata-poly-on-amd-beta)).
 
 What each of the five needs and how it was checked: [docs/BACKENDS.md](docs/BACKENDS.md#install).
 
@@ -479,19 +544,20 @@ you how to connect your apps. AI tools can also install, start and stop PolyStra
 (`xcode-select --install` in Terminal; Xcode itself is not needed). Then open Terminal in the PolyStrata folder and run
 **`./setup.sh`**. It builds the Mac engine on your Mac (about 7 minutes), asks the same questions, downloads the model
 and starts it. Next time, `./setup.sh` starts it right away. Which size fits your Mac and how fast it is:
-[docs/MAC.md](docs/MAC.md).
+[docs/MAC.md](docs/MAC.md). The Mac engine runs Qwen3.8-Flash-Next only; the other nine models need an NVIDIA or AMD
+card.
 
 The installer finds your card and sets up the right engine for it. It asks you a few questions:
 
 - which model and which size,
 - how much context (how much text the model keeps in mind),
-- whether it should read pictures (GLM 5.3 Flash, DeepSeek V4 Flash and LFM2.5 read none).
+- whether it should read pictures (GLM 5.3 Flash, DeepSeek V4 Flash, LFM2.5 and Flint read none).
 
 Press Enter each time for the recommended answer. Then it downloads the model (about 70 GB for Qwen3.8-Flash-Next,
-79 to 114 GB for GLM 5.3 Flash, 91 GB for DeepSeek V4 Flash, 11 to 29 GB for the other six) and starts it. If the download stops, run it again:
+79 to 114 GB for GLM 5.3 Flash, 91 GB for DeepSeek V4 Flash, 11 to 42 GB for the other seven) and starts it. If the download stops, run it again:
 it continues where it left off. Your browser opens the PolyStrata app at `http://127.0.0.1:8080`.
 
-All nine are in the installer's list of models. `./setup.sh --family glm`, `deepseek`, `lfm25`, `qwen36`, `ornith`,
+All ten are in the installer's list of models. `./setup.sh --family glm`, `deepseek`, `lfm25`, `flint`, `qwen36`, `ornith`,
 `gemma4`, `tiel` or `minicpmv` goes straight to one ([what it asks and writes](docs/GLM.md#install)).
 
 > **While the model starts, your PC can be slow or stop responding for 1-3 minutes** (longest the first time).
@@ -588,6 +654,22 @@ chosen by name: `--model QAD-Q4_0`.
 Against Q8_0, on five prompts of 256 tokens each, the other sizes pick Q8_0's most likely token at 96.8% of the steps
 (UD-Q6_K_XL), 95.5% (UD-Q4_K_XL), 92.7% (QAD-Q4_0) and 91.6% (UD-Q3_K_XL).
 
+### Flint 40B-A2.5B
+
+Four sizes. Beside an 8 GB card the installer takes UD-Q4_K_XL from about 40 GB of RAM and UD-Q3_K_XL below that;
+beside a larger card UD-Q4_K_XL needs less. The others are chosen by name: `--model Q8_0`.
+
+| Size | What it is | Download | RAM beside an 8 GB card |
+| --- | --- | ---: | ---: |
+| **UD-Q4_K_XL** | the whole model with 4- and 5-bit experts ([Unsloth](https://huggingface.co/unsloth/flint-GGUF)) | 25 GB | about 29 GB |
+| **UD-Q3_K_XL** | the same with 3-bit experts: the least RAM | 18 GB | about 22 GB |
+| **UD-Q6_K_XL** | 6-bit experts | 36 GB | about 40 GB |
+| **Q8_0** | 8-bit throughout, the closest to the model as trained | 42 GB | about 46 GB |
+
+On the 32 GB laptop UD-Q4_K_XL's file did not stay in RAM: it wrote a short chat at 20-29 tokens/s, UD-Q3_K_XL at
+61-63. Against Q8_0, on five prompts of 256 tokens each, the other sizes pick Q8_0's most likely token at 97.8% of
+the steps (UD-Q6_K_XL), 95.9% (UD-Q4_K_XL) and 94.0% (UD-Q3_K_XL).
+
 ### Qwen3.6-35B-A3B
 
 Three sizes so far. The installer takes UD-Q3_K_M, or UD-Q2_K_XL when the PC has too little RAM for it. UD-Q4_K_M is chosen by name: `--model UD-Q4_K_M`.
@@ -656,7 +738,7 @@ Q6_K is chosen by name: `--model Q6_K`.
 
 ## Using it
 
-All nine models are used the same way: the same app, the same API.
+All ten models are used the same way: the same app, the same API.
 
 <p align="center"><img src="docs/media/runpagoda.png" width="900" alt="The app's Monitor tab next to a coding agent"><br>
 <sub>The app's <b>Monitor</b> (left) while a coding agent writes the pagoda garden from the video (right). A screenshot from <a href="https://github.com/Niko1221/Strata">Strata</a>.</sub></p>
@@ -676,12 +758,12 @@ All nine models are used the same way: the same app, the same API.
 
 Where they differ:
 
-| | Qwen3.8-Flash-Next | GLM 5.3 Flash | DeepSeek V4 Flash | LFM2.5-24B-A2B | Qwen3.6-35B-A3B, Ornith 1.5, Gemma 4 26B-A4B, Tiel Coder 35B-A3B, MiniCPM-V 4.7 35B-A3B |
-| --- | --- | --- | --- | --- | --- |
-| **Pictures** | Say yes to "Images?" in setup. Then click **Picture** in the chat, or attach pictures in your app. AMD cards read pictures on Linux through the processor; on Windows they can't yet. | Not yet. | It reads text only. | It reads text only. | Say yes to "Images?" in setup, then as with Qwen3.8-Flash-Next. On a card with less than 16 GB the picture encoder runs on the processor, and a picture takes a few seconds. |
-| **Several requests** | One at a time by default, the others wait. `"parallel": 2` answers several at once ([BATCHING.md](docs/BATCHING.md)); on a 12 GB card each answer gets slower. | One at a time, the others wait. | One at a time, the others wait. | One at a time, the others wait. | One at a time, the others wait. |
-| **Several conversations** | The last one is kept, so follow-up messages start in seconds. Two engine arguments keep several in RAM ([details](docs/DETAILS.md#using-it)). | The last one is kept. Setup asks whether to keep several in RAM, so that an agent and its subagents take turns without their prompts being read again ([how](docs/GLM.md#several-conversations-at-once)). | As GLM 5.3 Flash. | As GLM 5.3 Flash. | As GLM 5.3 Flash. |
-| **Long prompts** | The first message of a chat is read in full, about 1 minute per 30,000 tokens. | The first message is read in full, about 40 seconds per 30,000 tokens. | The first message is read in full, about 29 seconds per 30,000 tokens. | The first message is read in full: 30,000 tokens take 1.3 to 1.5 seconds on the workstation and 8 to 10 seconds on the 8 GB laptop. | The first message is read in full: 30,000 tokens take 4 to 5 seconds on the workstation and 14 to 27 seconds on the 8 GB laptop. |
+| | Qwen3.8-Flash-Next | GLM 5.3 Flash | DeepSeek V4 Flash | LFM2.5-24B-A2B | Flint 40B-A2.5B | Qwen3.6-35B-A3B, Ornith 1.5, Gemma 4 26B-A4B, Tiel Coder 35B-A3B, MiniCPM-V 4.7 35B-A3B |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Pictures** | Say yes to "Images?" in setup. Then click **Picture** in the chat, or attach pictures in your app. AMD cards read pictures on Linux through the processor; on Windows they can't yet. | Not yet. | It reads text only. | It reads text only. | It reads text only. | Say yes to "Images?" in setup, then as with Qwen3.8-Flash-Next. On a card with less than 16 GB the picture encoder runs on the processor, and a picture takes a few seconds. |
+| **Several requests** | One at a time by default, the others wait. `"parallel": 2` answers several at once ([BATCHING.md](docs/BATCHING.md)); on a 12 GB card each answer gets slower. | One at a time, the others wait. | One at a time, the others wait. | One at a time, the others wait. | One at a time, the others wait. | One at a time, the others wait. |
+| **Several conversations** | The last one is kept, so follow-up messages start in seconds. Two engine arguments keep several in RAM ([details](docs/DETAILS.md#using-it)). | The last one is kept. Setup asks whether to keep several in RAM, so that an agent and its subagents take turns without their prompts being read again ([how](docs/GLM.md#several-conversations-at-once)). | As GLM 5.3 Flash. | As GLM 5.3 Flash. | As GLM 5.3 Flash. | As GLM 5.3 Flash. |
+| **Long prompts** | The first message of a chat is read in full, about 1 minute per 30,000 tokens. | The first message is read in full, about 40 seconds per 30,000 tokens. | The first message is read in full, about 29 seconds per 30,000 tokens. | The first message is read in full: 30,000 tokens take 1.3 to 1.5 seconds on the workstation and 8 to 10 seconds on the 8 GB laptop. | The first message is read in full: 30,000 tokens take about 2.3 seconds on the workstation and 15 to 22 seconds on the 8 GB laptop. | The first message is read in full: 30,000 tokens take 4 to 5 seconds on the workstation and 14 to 27 seconds on the 8 GB laptop. |
 
 More: [where your chats are stored](docs/INSTALL.md#where-things-are-stored), [the API](docs/DETAILS.md#using-it).
 
@@ -797,6 +879,23 @@ Every part and its numbers: [docs/DEEPSEEK.md](docs/DEEPSEEK.md#how-it-differs-f
 
 Every part and its numbers: [docs/LFM.md](docs/LFM.md).
 
+### Flint 40B-A2.5B
+
+<p align="center"><img src="docs/media/how-it-works-flint.svg" width="860" alt="The model's 12,032 experts: the ones an answer keeps using on the graphics card, the rest in RAM, the model's file on the SSD"></p>
+
+- **The model is a team of 12,032 small experts**, 256 in each of 47 layers. Each word needs only 6 from every layer,
+  and one shared expert that every word uses.
+- **Most of its 49 layers look back 513 tokens.** 35 of them attend only to the last 513 tokens and keep a ring of
+  rows that does not grow. Only the other 14 keep the whole conversation, so its memory of a conversation is small:
+  a 128K context takes 2.6 GB more VRAM than 32K.
+- **Your graphics card** keeps as many experts as fit: about 1,600 to 2,500 of them on an 8 GB card, all of UD-Q4_K_XL
+  on a 32 GB card. **Your RAM** holds the rest, and **your processor** runs them at the same time. **Your SSD** holds
+  the model's file, which is used where it is, with no second copy.
+- **No draft block.** The model has nothing that guesses ahead, so the engine guesses only from text the
+  conversation repeats.
+
+Every part and its numbers: [docs/FLINT.md](docs/FLINT.md).
+
 ### Qwen3.6-35B-A3B
 
 <p align="center"><img src="docs/media/how-it-works-qwen36.svg" width="860" alt="The model's 10,240 experts: the ones an answer keeps using on the graphics card, the rest in RAM, the model's file on the SSD"></p>
@@ -904,7 +1003,8 @@ GLM 5.3 Flash runs from the files of
 Qwen3.6-35B-A3B is by the Qwen team, Gemma 4 by Google and DeepSeek V4 Flash by DeepSeek, all three in
 [Unsloth](https://huggingface.co/unsloth)'s quantization. LFM2.5-24B-A2B is by
 [Liquid AI](https://huggingface.co/LiquidAI/LFM2.5-24B-A2B), in Unsloth's quantization and in Liquid AI's own
-QAD-Q4_0. Ornith 1.5 is by ornith-ai, in
+QAD-Q4_0. Flint 40B-A2.5B is by [Recursive](https://huggingface.co/RecursiveSI/flint), in Unsloth's quantization.
+Ornith 1.5 is by ornith-ai, in
 [mudler](https://huggingface.co/mudler/Ornith-1.5-35B-A3B-APEX-MTP-GGUF)'s APEX quantization. Tiel Coder 35B-A3B is Ornith 1.5 in
 [peculiar-ragdoll](https://huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF-MTP)'s quantization;
 [u/Sensitive_Song4219](https://www.reddit.com/r/LocalLLM/comments/1x22inc/comment/pf3r111/) found that it runs on PolyStrata.

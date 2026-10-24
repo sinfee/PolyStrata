@@ -21,10 +21,14 @@ a second machine, a Windows laptop whose card has 8 GB.
 | MiniCPM-V 4.7 35B-A3B | `qwen35moe` | `strata-poly` | OpenBMB Q4_K_M, mix_q3gud_im and Q6_K, 15.5 to 28.5 GB | none: it answers one token at a time |
 | DeepSeek V4 Flash | `deepseek4` | `strata-poly` | Unsloth UD-IQ2_XXS, three files, 90.9 GB | repeats only: its draft model is not run yet |
 | LFM2.5-24B-A2B | `lfm2moe` | `strata-poly` | Unsloth UD-Q4_K_XL, UD-Q3_K_XL, UD-Q6_K_XL and Q8_0, Liquid AI QAD-Q4_0, 10.9 to 25.5 GB | repeats only: there is no draft model |
+| Flint 40B-A2.5B | `flint` | `strata-poly` | Unsloth UD-Q4_K_XL, UD-Q3_K_XL, UD-Q6_K_XL and Q8_0, 18.5 to 42.3 GB | repeats only: there is no draft model |
 
 `strata` is the first engine and runs Qwen3.8 only; nothing in it changed. `strata-poly` is the engine that reads a
-GGUF in place, and it now has four architectures. It was called `strata-glm`, after its first model; an install
+GGUF in place, and it now has six architectures. It was called `strata-glm`, after its first model; an install
 from then keeps its engine and moves to the new name the next time setup updates it.
+
+The optional CUDA [GDN prefill adapter](DETAILS.md#strata-poly-chunked-gdn-prefill) uses
+`STRATA_GDN_MMA=1` for eligible Qwen35 reads. It is off by default; that section lists its shape and device limits.
 
 ## Install
 
@@ -96,8 +100,10 @@ release was not built from, it compiles the engine with the CUDA Toolkit and Vis
 the newest that CUDA 13 takes. A newer Visual Studio serves when it has the 2022 toolset (v143) among its
 components; setup offers to install what is missing. After a `git pull` that changes the source, an engine compiled
 here is compiled again, and a ready-made one is replaced by the release's for the new source; until there is one,
-the ready-made engine already installed starts. GLM 5.3 Flash was not run on Windows, and setup says so before it
-installs it there.
+the ready-made engine already installed starts. On an AMD card under Windows there is nothing ready-made: setup
+compiles `strata-poly` for the card from AMD's TheRock wheels in `.rocm-win`, as it does for the Qwen engine, and
+keeps the images off ([AMD_HIP.md](AMD_HIP.md#strata-poly-on-amd-beta)). GLM 5.3 Flash was not run on Windows, and
+setup says so before it installs it there.
 
 Each install is a model of its own: `--list-models`, `/model` and the web page's list show all of them, and
 `./setup.sh --check` has a line for each with what this PC's card and RAM make of it.
@@ -206,6 +212,7 @@ and, by the tokenizer's `pre` name, how the model writes its reasoning and its t
 | Gemma 4 | `<\|channel>thought` to `<channel\|>`, opened by the model | `<\|tool_call>call:NAME{key:value,...}<tool_call\|>` |
 | DeepSeek V4 | the prompt opens it, `</think>` ends it | `<｜DSML｜invoke name="NAME"><｜DSML｜parameter name="K" string="true">V...` |
 | LFM2.5 | the prompt opens it, `</think>` ends it | `<\|tool_call_start\|>[NAME(K='V', ...), NAME2()]<\|tool_call_end\|>` |
+| Flint | `<think>` to `</think>`, opened by the model | as GLM's |
 
 Gemma 4's template thinks only when it is told to, reads a tool in OpenAI's shape and starts with the tokenizer's
 `<bos>`; the server gives it all three. A tool's answers are put in the order of their calls for every model,
@@ -542,7 +549,8 @@ from hand-written configs, as for the last table below.
 
 DeepSeek V4 Flash's row is of 2026-10-15, as setup installs the model, with the build that added it
 ([DEEPSEEK.md](DEEPSEEK.md)). LFM2.5-24B-A2B's five sizes ran the same test on this machine and on the laptop
-below; their tables are in [LFM.md](LFM.md#how-fast).
+below; their tables are in [LFM.md](LFM.md#how-fast). So did Flint 40B-A2.5B's four, but for UD-Q6_K_XL, which ran on
+the laptop only ([FLINT.md](FLINT.md#how-fast)).
 
 Tiel Coder's three sizes ran again that day with the same build, whose prompt batches route on the card and skip
 cuBLAS for small products. The documents had grown to 32,165 tokens. UD-Q3_K_XL read them at 8,083 to 8,114
@@ -1983,7 +1991,9 @@ Setup knows the files in the table above. Another file of one of these architect
 - NVIDIA cards only. Built and run on one Linux machine, and the three new models' nine sizes on one Windows
   laptop as well. GLM 5.3 Flash was not run on Windows. Two cards can share a model since 2026-10-11
   ([MULTI_GPU.md](MULTI_GPU.md#the-strata-poly-models)); that ran with Qwen3.6 and Gemma 4 on two RTX 3080
-  under Linux only.
+  under Linux only. An AMD card runs them through the HIP build as well
+  ([AMD_HIP.md](AMD_HIP.md#strata-poly-on-amd-beta)): Qwen3.6 and Ornith on an RX 7600 under Linux, Tiel Coder on
+  an RX 9070 XT under Windows; nothing else on either.
 - The changes that came from the laptop were built on Windows first, and on Linux on 2026-10-10 (gcc 11.4,
   CUDA 12.8), where the first sizes were checked against llama.cpp and with and without guesses again, and the
   benchmark of [A prompt of 30,000 tokens](#a-prompt-of-30000-tokens) was run. GLM 5.3 Flash, which only that
